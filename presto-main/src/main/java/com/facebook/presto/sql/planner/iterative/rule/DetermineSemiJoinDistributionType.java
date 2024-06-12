@@ -27,6 +27,7 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
+import com.facebook.presto.Session;
 import com.facebook.presto.cost.CostComparator;
 import com.facebook.presto.cost.LocalCostEstimate;
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
@@ -35,6 +36,7 @@ import com.facebook.presto.cost.TaskCountEstimator;
 import com.facebook.presto.matching.Captures;
 import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.spi.plan.PlanNode;
+import com.facebook.presto.spi.statistics.HistoryBasedSourceInfo;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
@@ -47,11 +49,14 @@ import java.util.List;
 import static com.facebook.presto.SystemSessionProperties.getJoinDistributionType;
 import static com.facebook.presto.SystemSessionProperties.getJoinMaxBroadcastTableSize;
 import static com.facebook.presto.SystemSessionProperties.isSizeBasedJoinDistributionTypeEnabled;
+import static com.facebook.presto.SystemSessionProperties.isUseBroadcastJoinWhenBuildSizeSmallProbeSizeUnknownEnabled;
 import static com.facebook.presto.cost.CostCalculatorWithEstimatedExchanges.calculateJoinCostWithoutOutput;
 import static com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType.getSourceTablesSizeInBytes;
 import static com.facebook.presto.sql.planner.plan.Patterns.semiJoin;
 import static com.facebook.presto.sql.planner.plan.SemiJoinNode.DistributionType.PARTITIONED;
 import static com.facebook.presto.sql.planner.plan.SemiJoinNode.DistributionType.REPLICATED;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -62,10 +67,13 @@ import static java.util.Objects.requireNonNull;
 public class DetermineSemiJoinDistributionType
         implements Rule<SemiJoinNode>
 {
+    private static final Pattern<SemiJoinNode> PATTERN = semiJoin().matching(semiJoin -> !semiJoin.getDistributionType().isPresent());
+
     private final TaskCountEstimator taskCountEstimator;
     private final CostComparator costComparator;
 
-    private static final Pattern<SemiJoinNode> PATTERN = semiJoin().matching(semiJoin -> !semiJoin.getDistributionType().isPresent());
+    // records whether distribution decision was cost-based
+    private String statsSource;
 
     public DetermineSemiJoinDistributionType(CostComparator costComparator, TaskCountEstimator taskCountEstimator)
     {
@@ -80,12 +88,26 @@ public class DetermineSemiJoinDistributionType
     }
 
     @Override
+    public boolean isCostBased(Session session)
+    {
+        return getJoinDistributionType(session) == JoinDistributionType.AUTOMATIC;
+    }
+
+    @Override
+    public String getStatsSource()
+    {
+        return statsSource;
+    }
+
+    @Override
     public Result apply(SemiJoinNode semiJoinNode, Captures captures, Context context)
     {
         JoinDistributionType joinDistributionType = getJoinDistributionType(context.getSession());
         switch (joinDistributionType) {
             case AUTOMATIC:
-                return Result.ofPlanNode(getCostBasedDistributionType(semiJoinNode, context));
+                PlanNode resultNode = getCostBasedDistributionType(semiJoinNode, context);
+                statsSource = context.getStatsProvider().getStats(semiJoinNode).getSourceInfo().getSourceInfoName();
+                return Result.ofPlanNode(resultNode);
             case PARTITIONED:
                 return Result.ofPlanNode(semiJoinNode.withDistributionType(PARTITIONED));
             case BROADCAST:
@@ -106,6 +128,12 @@ public class DetermineSemiJoinDistributionType
         possibleJoinNodes.add(getSemiJoinNodeWithCost(node.withDistributionType(PARTITIONED), context));
 
         if (possibleJoinNodes.stream().anyMatch(result -> result.getCost().hasUnknownComponents())) {
+            if (isUseBroadcastJoinWhenBuildSizeSmallProbeSizeUnknownEnabled(context.getSession()) && possibleJoinNodes.stream().anyMatch(result -> ((SemiJoinNode) result.getPlanNode()).getDistributionType().get().equals(REPLICATED))) {
+                SemiJoinNode broadcastJoin = (SemiJoinNode) getOnlyElement(possibleJoinNodes.stream().filter(result -> ((SemiJoinNode) result.getPlanNode()).getDistributionType().get().equals(REPLICATED)).map(x -> x.getPlanNode()).collect(toImmutableList()));
+                if (context.getStatsProvider().getStats(broadcastJoin.getBuild()).getSourceInfo() instanceof HistoryBasedSourceInfo) {
+                    return broadcastJoin;
+                }
+            }
             if (isSizeBasedJoinDistributionTypeEnabled(context.getSession())) {
                 return getSizeBaseDistributionType(node, context);
             }
@@ -137,7 +165,7 @@ public class DetermineSemiJoinDistributionType
         PlanNodeStatsEstimate buildSideStatsEstimate = context.getStatsProvider().getStats(buildSide);
         double buildSideSizeInBytes = buildSideStatsEstimate.getOutputSizeInBytes(buildSide);
         return buildSideSizeInBytes <= joinMaxBroadcastTableSize.toBytes()
-            || (isSizeBasedJoinDistributionTypeEnabled(context.getSession())
+                || (isSizeBasedJoinDistributionTypeEnabled(context.getSession())
                 && getSourceTablesSizeInBytes(buildSide, context) <= joinMaxBroadcastTableSize.toBytes());
     }
 

@@ -59,7 +59,7 @@ import static com.facebook.presto.common.type.RealType.REAL;
 import static com.facebook.presto.common.type.SmallintType.SMALLINT;
 import static com.facebook.presto.common.type.TinyintType.TINYINT;
 import static com.facebook.presto.common.type.Varchars.isVarcharType;
-import static com.facebook.presto.hive.HiveWarningCode.HIVE_FILE_STATISTICS_CORRUPTION;
+import static com.facebook.presto.parquet.ParquetWarningCode.PARQUET_FILE_STATISTICS_CORRUPTION;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.isStatisticsOverflow;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.Float.floatToRawIntBits;
@@ -103,11 +103,11 @@ public class TupleDomainParquetPredicate
             return Domain.all(type);
         }
 
-        if (statistics.getNumNulls() == rowCount) {
+        if (statistics.isNumNullsSet() && statistics.getNumNulls() == rowCount) {
             return Domain.onlyNull(type);
         }
 
-        boolean hasNullValue = statistics.getNumNulls() != 0L;
+        boolean hasNullValue = !statistics.isNumNullsSet() || statistics.getNumNulls() != 0L;
 
         if (!statistics.hasNonNullValue() || statistics.genericGetMin() == null || statistics.genericGetMax() == null) {
             return Domain.create(ValueSet.all(type), hasNullValue);
@@ -123,7 +123,7 @@ public class TupleDomainParquetPredicate
         }
         catch (Exception exception) {
             if (warningCollector.isPresent()) {
-                warningCollector.get().add(new PrestoWarning(HIVE_FILE_STATISTICS_CORRUPTION, format("Corrupted statistics for column \"%s\" in Parquet file \"%s\": [%s]", column.toString(), id, statistics)));
+                warningCollector.get().add(new PrestoWarning(PARQUET_FILE_STATISTICS_CORRUPTION, format("Corrupted statistics for column \"%s\" in Parquet file \"%s\": [%s]", column.toString(), id, statistics)));
             }
             return Domain.create(ValueSet.all(type), hasNullValue);
         }

@@ -34,12 +34,13 @@ import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.PlannerUtils;
 import com.facebook.presto.sql.planner.RuleStatsRecorder;
 import com.facebook.presto.sql.planner.TypeProvider;
+import com.facebook.presto.sql.planner.iterative.rule.RowExpressionRewriteRuleSet;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
+import com.facebook.presto.sql.planner.optimizations.PlanOptimizerResult;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.Duration;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -99,15 +100,18 @@ public class IterativeOptimizer
     }
 
     @Override
-    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
+    public PlanOptimizerResult optimize(PlanNode plan, Session session, TypeProvider types, VariableAllocator variableAllocator, PlanNodeIdAllocator idAllocator, WarningCollector warningCollector)
     {
         // only disable new rules if we have legacy rules to fall back to
         if (!SystemSessionProperties.isNewOptimizerEnabled(session) && !legacyRules.isEmpty()) {
+            boolean planChanged = false;
             for (PlanOptimizer optimizer : legacyRules) {
-                plan = optimizer.optimize(plan, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
+                PlanOptimizerResult planOptimizerResult = optimizer.optimize(plan, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
+                plan = planOptimizerResult.getPlanNode();
+                planChanged = planChanged || planOptimizerResult.isOptimizerTriggered();
             }
 
-            return plan;
+            return PlanOptimizerResult.optimizerResult(plan, planChanged);
         }
 
         Memo memo;
@@ -133,10 +137,10 @@ public class IterativeOptimizer
         boolean planChanged = exploreGroup(memo.getRootGroup(), context, matcher);
         context.collectOptimizerInformation();
         if (!planChanged) {
-            return plan;
+            return PlanOptimizerResult.optimizerResult(plan, false);
         }
 
-        return memo.extract();
+        return PlanOptimizerResult.optimizerResult(memo.extract(), true);
     }
 
     private boolean exploreGroup(int group, Context context, Matcher matcher)
@@ -176,7 +180,7 @@ public class IterativeOptimizer
 
                 if (!rule.isEnabled(context.session)) {
                     if (isVerboseOptimizerInfoEnabled(context.session) && isApplicable(node, rule, matcher, context)) {
-                        context.addRulesApplicable(rule.getClass().getSimpleName());
+                        context.addRulesApplicable(getNameOfOptimizerRule(rule));
                     }
                     continue;
                 }
@@ -195,7 +199,7 @@ public class IterativeOptimizer
                             transformedNode = transformedNode.assignStatsEquivalentPlanNode(node.getStatsEquivalentPlanNode());
                         }
                     }
-                    context.addRulesTriggered(rule.getClass().getSimpleName(), node, transformedNode);
+                    context.addRulesTriggered(getNameOfOptimizerRule(rule), node, transformedNode, rule.isCostBased(context.session), rule.getStatsSource());
                     node = context.memo.replace(group, transformedNode, rule.getClass().getName());
 
                     done = false;
@@ -205,6 +209,15 @@ public class IterativeOptimizer
         }
 
         return progress;
+    }
+
+    private String getNameOfOptimizerRule(Rule<?> rule)
+    {
+        String ruleName = rule.getClass().getSimpleName();
+        if (rule instanceof RowExpressionRewriteRuleSet.RowExpressionRewriteRule) {
+            ruleName = ((RowExpressionRewriteRuleSet.RowExpressionRewriteRule) rule).getOptimizerNameForLog();
+        }
+        return ruleName;
     }
 
     private <T> Rule.Result transform(PlanNode node, Rule<T> rule, Matcher matcher, Context context)
@@ -229,7 +242,7 @@ public class IterativeOptimizer
         }
         stats.record(rule, duration, !result.isEmpty());
         if (SystemSessionProperties.isVerboseRuntimeStatsEnabled(context.session) || trackOptimizerRuntime(context.session, rule)) {
-            context.session.getRuntimeStats().addMetricValue(String.format("rule%sTimeNanos", rule.getClass().getSimpleName()), NANO, duration);
+            context.session.getRuntimeStats().addMetricValue(String.format("rule%sTimeNanos", getNameOfOptimizerRule(rule)), NANO, duration);
         }
 
         return result;
@@ -242,7 +255,7 @@ public class IterativeOptimizer
             return false;
         }
         List<String> optimizers = Splitter.on(",").trimResults().splitToList(optimizerString);
-        return optimizers.contains(rule.getClass().getSimpleName());
+        return optimizers.contains(getNameOfOptimizerRule(rule));
     }
 
     private <T> boolean isApplicable(PlanNode node, Rule<T> rule, Matcher matcher, Context context)
@@ -337,12 +350,16 @@ public class IterativeOptimizer
         private final String rule;
         private final Optional<String> oldNode;
         private final Optional<String> newNode;
+        private boolean isCostBased;
+        private final Optional<String> statsSource;
 
-        public RuleTriggered(String rule, Optional<String> oldNode, Optional<String> newNode)
+        public RuleTriggered(String rule, Optional<String> oldNode, Optional<String> newNode, boolean isCostBased, String statsSource)
         {
             this.rule = requireNonNull(rule, "rule is null");
             this.oldNode = requireNonNull(oldNode, "oldNode is null");
             this.newNode = requireNonNull(newNode, "newNode is null");
+            this.isCostBased = isCostBased;
+            this.statsSource = statsSource == null ? Optional.empty() : Optional.of(statsSource);
         }
 
         public String getRule()
@@ -359,6 +376,16 @@ public class IterativeOptimizer
         {
             return newNode;
         }
+
+        public boolean isCostBased()
+        {
+            return isCostBased;
+        }
+
+        public Optional<String> getStatsSource()
+        {
+            return statsSource;
+        }
     }
 
     private static class Context
@@ -373,7 +400,7 @@ public class IterativeOptimizer
         private final WarningCollector warningCollector;
         private final CostProvider costProvider;
         private final StatsProvider statsProvider;
-        private final List<RuleTriggered> rulesTriggered;
+        private final Set<RuleTriggered> rulesTriggered;
         private final Set<String> rulesApplicable;
         private final Metadata metadata;
         private final TypeProvider types;
@@ -406,7 +433,7 @@ public class IterativeOptimizer
             this.statsProvider = statsProvider;
             this.metadata = metadata;
             this.types = types;
-            this.rulesTriggered = new ArrayList<>();
+            this.rulesTriggered = new HashSet<>();
             this.rulesApplicable = new HashSet<>();
         }
 
@@ -417,7 +444,7 @@ public class IterativeOptimizer
             }
         }
 
-        public void addRulesTriggered(String rule, PlanNode oldNode, PlanNode newNode)
+        public void addRulesTriggered(String rule, PlanNode oldNode, PlanNode newNode, boolean isCostBased, String statsSource)
         {
             Optional<String> before = Optional.empty();
             Optional<String> after = Optional.empty();
@@ -427,7 +454,7 @@ public class IterativeOptimizer
                 after = Optional.of(PlannerUtils.getPlanString(newNode, session, types, metadata, false));
             }
 
-            rulesTriggered.add(new RuleTriggered(rule, before, after));
+            rulesTriggered.add(new RuleTriggered(rule, before, after, isCostBased, statsSource));
         }
 
         public void addRulesApplicable(String rule)
@@ -437,11 +464,15 @@ public class IterativeOptimizer
 
         public void collectOptimizerInformation()
         {
-            rulesTriggered.stream().map(x -> x.getRule()).distinct().forEach(rule -> session.getOptimizerInformationCollector().addInformation(new PlanOptimizerInformation(rule, true, Optional.empty(), Optional.empty())));
+            rulesTriggered.stream().map(
+                    x -> new PlanOptimizerInformation(x.getRule(), true, Optional.empty(), Optional.empty(), Optional.of(x.isCostBased()), x.getStatsSource()))
+                    .distinct().forEach(rule -> session.getOptimizerInformationCollector().addInformation(rule));
+
             if (SystemSessionProperties.isVerboseOptimizerResults(session)) {
                 rulesTriggered.stream().filter(x -> x.getNewNode().isPresent()).forEach(x -> session.getOptimizerResultCollector().addOptimizerResult(x.getRule(), x.getOldNode().get(), x.getNewNode().get()));
             }
-            rulesApplicable.forEach(x -> session.getOptimizerInformationCollector().addInformation(new PlanOptimizerInformation(x, false, Optional.of(true), Optional.empty())));
+            rulesApplicable.forEach(x -> session.getOptimizerInformationCollector().addInformation(
+                    new PlanOptimizerInformation(x, false, Optional.of(true), Optional.empty(), Optional.empty(), Optional.empty())));
         }
     }
 }

@@ -73,6 +73,7 @@ import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.facebook.presto.sql.tree.SubscriptExpression;
 import com.facebook.presto.sql.tree.SymbolReference;
+import com.facebook.presto.sql.tree.TableVersionExpression;
 import com.facebook.presto.sql.tree.TimeLiteral;
 import com.facebook.presto.sql.tree.TimestampLiteral;
 import com.facebook.presto.sql.tree.TryExpression;
@@ -93,6 +94,7 @@ import java.util.PrimitiveIterator;
 import java.util.function.Function;
 
 import static com.facebook.presto.sql.SqlFormatter.formatSql;
+import static com.facebook.presto.sql.tree.TableVersionExpression.TableVersionOperator.EQUAL;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.lang.String.format;
@@ -688,6 +690,13 @@ public final class ExpressionFormatter
             return Joiner.on(", ").join(expressions.stream()
                     .map((e) -> process(e, null))
                     .iterator());
+        }
+
+        protected String visitTableVersion(TableVersionExpression node, Void context)
+        {
+            return "FOR " + node.getTableVersionType().name()
+                    + (node.getTableVersionOperator() == EQUAL ? " AS OF " : " BEFORE ")
+                    + process(node.getStateExpression(), context) + " ";
         }
     }
 

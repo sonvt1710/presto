@@ -19,6 +19,7 @@ import com.facebook.presto.common.type.DecimalParseResult;
 import com.facebook.presto.common.type.Decimals;
 import com.facebook.presto.common.type.SqlDecimal;
 import com.facebook.presto.common.type.Type;
+import com.facebook.presto.metadata.FunctionAndTypeManager;
 import com.facebook.presto.metadata.FunctionListBuilder;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.SqlScalarFunction;
@@ -75,7 +76,9 @@ public abstract class AbstractTestFunctions
     protected AbstractTestFunctions(Session session, FeaturesConfig config)
     {
         this.session = requireNonNull(session, "session is null");
-        this.config = requireNonNull(config, "config is null").setLegacyLogFunction(true);
+        this.config = requireNonNull(config, "config is null")
+                .setLegacyLogFunction(true)
+                .setUseNewNanDefinition(true);
     }
 
     @BeforeClass
@@ -89,6 +92,11 @@ public abstract class AbstractTestFunctions
     {
         closeAllRuntimeException(functionAssertions);
         functionAssertions = null;
+    }
+
+    public FunctionAndTypeManager getFunctionAndTypeManager()
+    {
+        return functionAssertions.getFunctionAndTypeManager();
     }
 
     protected void assertFunction(String projection, Type expectedType, Object expected)
@@ -133,13 +141,6 @@ public abstract class AbstractTestFunctions
                 expectedResult);
     }
 
-    // this is not safe as it catches all RuntimeExceptions
-    @Deprecated
-    protected void assertInvalidFunction(String projection)
-    {
-        functionAssertions.assertInvalidFunction(projection);
-    }
-
     protected void assertInvalidFunction(String projection, StandardErrorCode errorCode, String messagePattern)
     {
         functionAssertions.assertInvalidFunction(projection, errorCode, messagePattern);
@@ -173,6 +174,11 @@ public abstract class AbstractTestFunctions
     protected void assertNumericOverflow(String projection, String message)
     {
         functionAssertions.assertNumericOverflow(projection, message);
+    }
+
+    protected void assertInvalidTypeDefinition(String projection, String message)
+    {
+        functionAssertions.assertInvalidTypeDefinition(projection, message);
     }
 
     protected void assertInvalidCast(String projection)

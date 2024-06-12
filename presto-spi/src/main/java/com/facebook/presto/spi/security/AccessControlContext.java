@@ -13,9 +13,12 @@
  */
 package com.facebook.presto.spi.security;
 
+import com.facebook.presto.common.RuntimeStats;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.WarningCollector;
 
 import java.util.Optional;
+import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
 
@@ -23,13 +26,19 @@ public class AccessControlContext
 {
     private final QueryId queryId;
     private final Optional<String> clientInfo;
+    private final Set<String> clientTags;
     private final Optional<String> source;
+    private final WarningCollector warningCollector;
+    private final RuntimeStats runtimeStats;
 
-    public AccessControlContext(QueryId queryId, Optional<String> clientInfo, Optional<String> source)
+    public AccessControlContext(QueryId queryId, Optional<String> clientInfo, Set<String> clientTags, Optional<String> source, WarningCollector warningCollector, RuntimeStats runtimeStats)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
         this.clientInfo = requireNonNull(clientInfo, "clientInfo is null");
+        this.clientTags = requireNonNull(clientTags, "clientTags is null");
         this.source = requireNonNull(source, "source is null");
+        this.warningCollector = requireNonNull(warningCollector, "warningCollector is null");
+        this.runtimeStats = requireNonNull(runtimeStats, "runtimeStats is null");
     }
 
     public QueryId getQueryId()
@@ -42,8 +51,23 @@ public class AccessControlContext
         return clientInfo;
     }
 
+    public Set<String> getClientTags()
+    {
+        return clientTags;
+    }
+
     public Optional<String> getSource()
     {
         return source;
+    }
+
+    public WarningCollector getWarningCollector()
+    {
+        return warningCollector;
+    }
+
+    public RuntimeStats getRuntimeStats()
+    {
+        return runtimeStats;
     }
 }

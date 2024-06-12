@@ -23,13 +23,14 @@ class ResponseHandler;
 
 namespace facebook::presto {
 
+class PrestoServer;
 struct ServerOperation;
 
 /// Static class implements Presto Server Operations.
 class PrestoServerOperations {
  public:
-  PrestoServerOperations(TaskManager* const taskManager)
-      : taskManager_(taskManager) {}
+  PrestoServerOperations(TaskManager* taskManager, PrestoServer* server)
+      : taskManager_(taskManager), server_(server) {}
 
   void runOperation(
       proxygen::HTTPMessage* message,
@@ -47,11 +48,23 @@ class PrestoServerOperations {
       const ServerOperation& op,
       proxygen::HTTPMessage* message);
 
-  std::string debugOperation(
+  std::string taskOperation(
       const ServerOperation& op,
       proxygen::HTTPMessage* message);
 
+  std::string serverOperation(
+      const ServerOperation& op,
+      proxygen::HTTPMessage* message);
+
+ private:
+  std::string serverOperationTrace();
+
+  std::string serverOperationSetState(proxygen::HTTPMessage* message);
+
+  std::string serverOperationAnnouncer(proxygen::HTTPMessage* message);
+
   TaskManager* const taskManager_;
+  PrestoServer* const server_;
 };
 
 } // namespace facebook::presto

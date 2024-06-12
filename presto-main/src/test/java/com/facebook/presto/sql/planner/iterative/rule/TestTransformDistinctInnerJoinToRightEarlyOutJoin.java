@@ -15,6 +15,7 @@ package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.cost.VariableStatsEstimate;
+import com.facebook.presto.spi.plan.EquiJoinClause;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
@@ -22,7 +23,6 @@ import com.facebook.presto.sql.planner.iterative.properties.LogicalPropertiesPro
 import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder;
 import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
-import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -36,6 +36,8 @@ import static com.facebook.presto.SystemSessionProperties.IN_PREDICATES_AS_INNER
 import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
 import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.plan.AggregationNode.Step.SINGLE;
+import static com.facebook.presto.spi.plan.JoinType.INNER;
+import static com.facebook.presto.spi.statistics.SourceInfo.ConfidenceLevel.FACT;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.AUTOMATIC;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.aggregation;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.assignUniqueId;
@@ -43,7 +45,6 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.equiJo
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.assignment;
-import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.relational.Expressions.variable;
 import static java.util.Collections.emptyList;
 
@@ -75,16 +76,16 @@ public class TestTransformDistinctInnerJoinToRightEarlyOutJoin
                                             p.values(new PlanNodeId("valuesB"), 100, b),
                                             p.assignUniqueId(unique,
                                                     p.values(new PlanNodeId("valuesA"), 1000, a)),
-                                            new JoinNode.EquiJoinClause(b, a))));
+                                            new EquiJoinClause(b, a))));
                 })
                 .overrideStats("valuesA", PlanNodeStatsEstimate.builder()
                         .setOutputRowCount(1000)
-                        .setConfident(true)
+                        .setConfidence(FACT)
                         .addVariableStatistics(variable("a", BIGINT), new VariableStatsEstimate(0, 1000, 0, 8, 100))
                         .build())
                 .overrideStats("valuesB", PlanNodeStatsEstimate.builder()
                         .setOutputRowCount(100)
-                        .setConfident(true)
+                        .setConfidence(FACT)
                         .addVariableStatistics(variable("b", BIGINT), new VariableStatsEstimate(0, 1000, 0, 8, 10))
                         .build())
                 .matches(aggregation(ImmutableMap.of(),
@@ -115,7 +116,7 @@ public class TestTransformDistinctInnerJoinToRightEarlyOutJoin
                                     p.values(new PlanNodeId("valuesB"), b),
                                     p.assignUniqueId(unique,
                                             p.values(new PlanNodeId("valuesA"), a)),
-                                    new JoinNode.EquiJoinClause(b, a)))));
+                                    new EquiJoinClause(b, a)))));
         };
 
         tester().assertThat(new TransformDistinctInnerJoinToRightEarlyOutJoin())

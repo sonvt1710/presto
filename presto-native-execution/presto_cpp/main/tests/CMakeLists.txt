@@ -15,11 +15,13 @@ add_executable(
   CoordinatorDiscovererTest.cpp
   HttpServerWrapper.cpp
   MutableConfigs.cpp
+  PeriodicMemoryCheckerTest.cpp
   PrestoExchangeSourceTest.cpp
   PrestoTaskTest.cpp
   QueryContextCacheTest.cpp
   ServerOperationTest.cpp
-  TaskManagerTest.cpp)
+  TaskManagerTest.cpp
+  QueryContextManagerTest.cpp)
 
 add_test(
   NAME presto_server_test
@@ -28,6 +30,7 @@ add_test(
 
 target_link_libraries(
   presto_server_test
+  velox_caching
   velox_exec_test_lib
   presto_server_lib
   velox_dwio_common_test_utils
@@ -43,6 +46,9 @@ target_link_libraries(
   gmock
   gtest
   gtest_main)
+
+set_property(TARGET presto_server_test PROPERTY JOB_POOL_LINK
+                                                presto_link_job_pool)
 
 if(PRESTO_ENABLE_REMOTE_FUNCTIONS)
   add_executable(presto_server_remote_function_test

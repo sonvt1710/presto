@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.testing;
 
+import com.facebook.presto.common.RuntimeStats;
 import com.facebook.presto.common.function.SqlFunctionProperties;
 import com.facebook.presto.common.type.TimeZoneKey;
 import com.facebook.presto.execution.QueryIdGenerator;
@@ -64,21 +65,32 @@ public class TestingConnectorSession
 
     public TestingConnectorSession(List<PropertyMetadata<?>> properties)
     {
-        this("user", Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, ImmutableMap.of(), new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), Optional.empty(), ImmutableMap.of());
+        this("user", new ConnectorIdentity("user", Optional.empty(), Optional.empty()), Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, ImmutableMap.of(), new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), Optional.empty(), ImmutableMap.of());
+    }
+
+    public TestingConnectorSession(ConnectorIdentity identity, List<PropertyMetadata<?>> properties)
+    {
+        this(identity.getUser(), identity, Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, ImmutableMap.of(), new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), Optional.empty(), ImmutableMap.of());
+    }
+
+    public TestingConnectorSession(List<PropertyMetadata<?>> properties, Set<String> clientTags)
+    {
+        this("user", new ConnectorIdentity("user", Optional.empty(), Optional.empty()), Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, ImmutableMap.of(), new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), clientTags, Optional.empty(), ImmutableMap.of());
     }
 
     public TestingConnectorSession(List<PropertyMetadata<?>> properties, Map<String, Object> propertyValues)
     {
-        this("user", Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, propertyValues, new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), Optional.empty(), ImmutableMap.of());
+        this("user", new ConnectorIdentity("user", Optional.empty(), Optional.empty()), Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, propertyValues, new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), Optional.empty(), ImmutableMap.of());
     }
 
     public TestingConnectorSession(List<PropertyMetadata<?>> properties, Optional<String> schema)
     {
-        this("user", Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, ImmutableMap.of(), new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), schema, ImmutableMap.of());
+        this("user", new ConnectorIdentity("user", Optional.empty(), Optional.empty()), Optional.of("test"), Optional.empty(), UTC_KEY, ENGLISH, System.currentTimeMillis(), properties, ImmutableMap.of(), new FeaturesConfig().isLegacyTimestamp(), Optional.empty(), ImmutableSet.of(), schema, ImmutableMap.of());
     }
 
     public TestingConnectorSession(
             String user,
+            ConnectorIdentity identity,
             Optional<String> source,
             Optional<String> traceToken,
             TimeZoneKey timeZoneKey,
@@ -93,7 +105,7 @@ public class TestingConnectorSession
             Map<SqlFunctionId, SqlInvokedFunction> sessionFunctions)
     {
         this.queryId = queryIdGenerator.createNextQueryId().toString();
-        this.identity = new ConnectorIdentity(requireNonNull(user, "user is null"), Optional.empty(), Optional.empty());
+        this.identity = requireNonNull(identity, "identity is null");
         this.source = requireNonNull(source, "source is null");
         this.traceToken = requireNonNull(traceToken, "traceToken is null");
         this.timeZoneKey = requireNonNull(timeZoneKey, "timeZoneKey is null");
@@ -204,6 +216,12 @@ public class TestingConnectorSession
     public WarningCollector getWarningCollector()
     {
         return WarningCollector.NOOP;
+    }
+
+    @Override
+    public RuntimeStats getRuntimeStats()
+    {
+        return new RuntimeStats();
     }
 
     @Override

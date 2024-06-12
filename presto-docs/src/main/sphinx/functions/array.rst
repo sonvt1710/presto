@@ -80,6 +80,19 @@ Array Functions
 
     Concatenates the elements of the given array using the delimiter and an optional string to replace nulls.
 
+.. function:: array_least_frequent(array(T)) -> array(T)
+
+    Returns the least frequent element of an array. If there are multiple elements with same frequency, the function returns the smallest element. ::
+
+        SELECT array_least_frequent(ARRAY[1, 0 , 5])  -- ARRAY[0]
+
+.. function:: array_least_frequent(array(T), n) -> array(T)
+
+    Returns ``n`` least frequent elements of an array. The elements are ordered in increasing order of their frequencies.
+    If two elements have same frequency, smaller elements will appear first. ::
+
+        SELECT array_least_frequent(ARRAY[3, 2, 2, 6, 6, 1, 1], 3) -- ARRAY[3, 1, 2]
+
 .. function:: array_max(x) -> x
 
     Returns the maximum value of input array.
@@ -161,7 +174,7 @@ Array Functions
 .. function:: array_sort_desc(x) -> array
 
     Returns the ``array`` sorted in the descending order. Elements of the ``array`` must be orderable.
-    Null elements will be placed at the end of the returned array.
+    Null elements will be placed at the end of the returned array.::
 
         SELECT array_sort_desc(ARRAY [100, 1, 10, 50]); -- [100, 50, 10, 1]
         SELECT array_sort_desc(ARRAY [null, 100, null, 1, 10, 50]); -- [100, 50, 10, 1, null, null]
@@ -178,7 +191,8 @@ Array Functions
 .. function:: array_top_n(array(T), int) -> array(T)
 
     Returns an array of top n elements from a given ``array``, according to its natural descending order.
-    If n is smaller than the size of the given ``array``, the returned list will be the same size as the input instead of n.
+    If n is smaller than the size of the given ``array``, the returned list will be the same size as the input instead of n.::
+
         SELECT array_top_n(ARRAY [1, 100, 2, 5, 3], 3); -- [100, 5, 3]
         SELECT array_top_n(ARRAY [1, 100], 5); -- [100, 1]
         SELECT array_top_n(ARRAY ['a', 'zzz', 'zz', 'b', 'g', 'f'], 3); -- ['zzz', 'zz', 'g']
@@ -205,7 +219,7 @@ Array Functions
 .. function:: combinations(array(T), n) -> array(array(T))
 
     Returns n-element combinations of the input array.
-    If the input array has no duplicates, ``combinations`` returns n-element subsets. 
+    If the input array has no duplicates, ``combinations`` returns n-element subsets.
     Order of subgroup is deterministic but unspecified. Order of elements within
     a subgroup are deterministic but unspecified. ``n`` must not be greater than 5,
     and the total size of subgroups generated must be smaller than 100000::

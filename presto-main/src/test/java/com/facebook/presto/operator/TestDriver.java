@@ -55,7 +55,6 @@ import org.testng.annotations.Test;
 
 import java.io.Closeable;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -119,6 +118,7 @@ public class TestDriver
                     singleGroupingSet(ImmutableList.of()),
                     ImmutableList.of(),
                     AggregationNode.Step.PARTIAL,
+                    Optional.empty(),
                     Optional.empty(),
                     Optional.empty()),
             new PartitioningScheme(Partitioning.create(FIXED_HASH_DISTRIBUTION, ImmutableList.of()), ImmutableList.of()),
@@ -249,7 +249,7 @@ public class TestDriver
         final List<Type> types = ImmutableList.of(VARCHAR, BIGINT, BIGINT);
         TableScanOperator source = new TableScanOperator(driverContext.addOperatorContext(99, new PlanNodeId("test"), "values"),
                 sourceId,
-                (session, split, table, columns) -> new FixedPageSource(rowPagesBuilder(types)
+                (session, split, table, columns, runtimeStats) -> new FixedPageSource(rowPagesBuilder(types)
                         .addSequencePage(10, 20, 30, 40)
                         .build()),
                 TESTING_TABLE_HANDLE,
@@ -349,7 +349,7 @@ public class TestDriver
         List<Type> types = ImmutableList.of(VARCHAR, BIGINT, BIGINT);
         TableScanOperator source = new AlwaysBlockedMemoryRevokingTableScanOperator(driverContext.addOperatorContext(99, new PlanNodeId("test"), "scan"),
                 new PlanNodeId("source"),
-                (session, split, table, columns) -> new FixedPageSource(rowPagesBuilder(types)
+                (session, split, table, columns, runtimeStats) -> new FixedPageSource(rowPagesBuilder(types)
                         .addSequencePage(10, 20, 30, 40)
                         .build()),
                 TESTING_TABLE_HANDLE,
@@ -378,7 +378,7 @@ public class TestDriver
         // create a table scan operator that does not block, which will cause the driver loop to busy wait
         TableScanOperator source = new NotBlockedTableScanOperator(driverContext.addOperatorContext(99, new PlanNodeId("test"), "values"),
                 sourceId,
-                (session, split, table, columns) -> new FixedPageSource(rowPagesBuilder(types)
+                (session, split, table, columns, runtimeStats) -> new FixedPageSource(rowPagesBuilder(types)
                         .addSequencePage(10, 20, 30, 40)
                         .build()),
                 TESTING_TABLE_HANDLE,
@@ -435,7 +435,7 @@ public class TestDriver
         final List<Type> types = ImmutableList.of(VARCHAR, BIGINT, BIGINT);
         TableScanOperator source = new TableScanOperator(driverContext.addOperatorContext(99, new PlanNodeId("test"), "values"),
                 sourceId,
-                (session, split, table, columns) -> new FixedPageSource(rowPagesBuilder(types)
+                (session, split, table, columns, runtimeStats) -> new FixedPageSource(rowPagesBuilder(types)
                         .addSequencePage(10, 20, 30, 40)
                         .build()),
                 TESTING_TABLE_HANDLE,
@@ -671,23 +671,23 @@ public class TestDriver
     private static class TestingFragmentResultCacheManager
             implements FragmentResultCacheManager
     {
-        private final Map<CacheKey, List<Page>> cache = new HashMap<>();
+        private final Map<CacheKey, FragmentCacheResult> cache = new HashMap<>();
 
         @Override
-        public Future<?> put(String plan, Split split, List<Page> result)
+        public Future<?> put(String plan, Split split, List<Page> result, long inputDataSize)
         {
-            cache.put(new CacheKey(plan, split.getSplitIdentifier()), result);
+            cache.put(new CacheKey(plan, split.getSplitIdentifier()), new FragmentCacheResult(Optional.of(result.stream().iterator()), inputDataSize));
             return immediateFuture(null);
         }
 
         @Override
-        public Optional<Iterator<Page>> get(String plan, Split split)
+        public FragmentCacheResult get(String plan, Split split)
         {
             CacheKey key = new CacheKey(plan, split.getSplitIdentifier());
             if (cache.containsKey(key)) {
-                return Optional.of(cache.get(key).iterator());
+                return cache.get(key);
             }
-            return Optional.empty();
+            return new FragmentCacheResult(Optional.empty(), 0);
         }
     }
 }

@@ -299,6 +299,12 @@ public final class FunctionResolution
     }
 
     @Override
+    public FunctionHandle greatestFunction(List<Type> valueTypes)
+    {
+        return functionAndTypeResolver.lookupFunction("greatest", fromTypes(valueTypes));
+    }
+
+    @Override
     public boolean isMinFunction(FunctionHandle functionHandle)
     {
         return functionAndTypeResolver.getFunctionMetadata(functionHandle).getName().equals(QualifiedObjectName.valueOf(DEFAULT_NAMESPACE, "min"));
@@ -308,6 +314,12 @@ public final class FunctionResolution
     public FunctionHandle minFunction(Type valueType)
     {
         return functionAndTypeResolver.lookupFunction("min", fromTypes(valueType));
+    }
+
+    @Override
+    public FunctionHandle leastFunction(List<Type> valueTypes)
+    {
+        return functionAndTypeResolver.lookupFunction("least", fromTypes(valueTypes));
     }
 
     @Override
@@ -342,5 +354,10 @@ public final class FunctionResolution
     public boolean isArrayContainsFunction(FunctionHandle functionHandle)
     {
         return functionAndTypeResolver.getFunctionMetadata(functionHandle).getName().equals(QualifiedObjectName.valueOf(DEFAULT_NAMESPACE, "contains"));
+    }
+
+    public boolean isElementAtFunction(FunctionHandle functionHandle)
+    {
+        return functionAndTypeResolver.getFunctionMetadata(functionHandle).getName().equals(QualifiedObjectName.valueOf(DEFAULT_NAMESPACE, "element_at"));
     }
 }

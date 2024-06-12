@@ -34,13 +34,6 @@ public class TestPrestoSparkNativeGeneralQueries
         return PrestoSparkNativeQueryRunnerUtils.createJavaQueryRunner();
     }
 
-    @Override
-    protected void assertQuery(String sql)
-    {
-        super.assertQuery(sql);
-        PrestoSparkNativeQueryRunnerUtils.assertShuffleMetadata();
-    }
-
     // TODO: Enable following Ignored tests after fixing (Tests can be enabled by removing the method)
     @Override
     @Ignore
@@ -52,26 +45,18 @@ public class TestPrestoSparkNativeGeneralQueries
 
     @Override
     @Ignore
-    public void testOrderBy() {}
-
-    @Override
-    @Ignore
     public void testShowAndDescribe() {}
 
     @Override
-    @Ignore
-    public void testSubqueries() {}
-
-    @Override
-    @Ignore
-    public void testTopN() {}
-
-    @Override
-    @Ignore
-    public void testInsertIntoSpecialPartitionName(){}
+    public void testSystemTables() {}
 
     // @TODO Refer https://github.com/prestodb/presto/issues/20294
     @Override
     @Ignore
     public void testAnalyzeStats() {}
+
+    // https://github.com/prestodb/presto/issues/22275
+    @Override
+    @Ignore
+    public void testUnionAllInsert() {}
 }

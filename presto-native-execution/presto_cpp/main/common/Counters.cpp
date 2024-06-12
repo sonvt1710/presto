@@ -17,23 +17,23 @@
 
 namespace facebook::presto {
 
-void registerPrestoCppCounters() {
-  REPORT_ADD_STAT_EXPORT_TYPE(
+void registerPrestoMetrics() {
+  DEFINE_METRIC(
       kCounterDriverCPUExecutorQueueSize, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
+  DEFINE_METRIC(
       kCounterDriverCPUExecutorLatencyMs, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterHTTPExecutorLatencyMs, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumHTTPRequest, facebook::velox::StatType::COUNT);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumHTTPRequestError, facebook::velox::StatType::COUNT);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterHTTPRequestLatencyMs, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
+  DEFINE_METRIC(
+      kCounterSpillerExecutorQueueSize, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterSpillerExecutorLatencyMs, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterHTTPExecutorLatencyMs, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumHTTPRequest, facebook::velox::StatType::COUNT);
+  DEFINE_METRIC(kCounterNumHTTPRequestError, facebook::velox::StatType::COUNT);
+  DEFINE_METRIC(kCounterHTTPRequestLatencyMs, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
       kCounterHttpClientPrestoExchangeNumOnBody,
       facebook::velox::StatType::COUNT);
-  REPORT_ADD_HISTOGRAM_EXPORT_PERCENTILE(
+  DEFINE_HISTOGRAM_METRIC(
       kCounterHttpClientPrestoExchangeOnBodyBytes,
       1000,
       0,
@@ -43,7 +43,9 @@ void registerPrestoCppCounters() {
       95,
       99,
       100);
-  REPORT_ADD_HISTOGRAM_EXPORT_PERCENTILE(
+  DEFINE_METRIC(
+      kCounterHttpClientNumConnectionsCreated, facebook::velox::StatType::SUM);
+  DEFINE_HISTOGRAM_METRIC(
       kCounterPrestoExchangeSerializedPageSize,
       10000,
       0,
@@ -53,194 +55,66 @@ void registerPrestoCppCounters() {
       95,
       99,
       100);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumQueryContexts, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(kCounterNumTasks, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumTasksRunning, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumTasksFinished, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumTasksCancelled, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumTasksAborted, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumTasksFailed, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumZombieVeloxTasks, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumZombiePrestoTasks, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumRunningDrivers, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterNumBlockedDrivers, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMappedMemoryBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterAllocatedMemoryBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMmapRawAllocBytesSmall, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMmapExternalMappedBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
+  DEFINE_METRIC(kCounterNumQueryContexts, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasks, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasksRunning, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasksFinished, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasksCancelled, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasksAborted, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasksFailed, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumZombieVeloxTasks, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumZombiePrestoTasks, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumTasksWithStuckOperator, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumTasksDeadlock, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumTaskManagerLockTimeOut, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumQueuedDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumOnThreadDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumSuspendedDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForConsumerDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForSplitDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForProducerDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForJoinBuildDrivers,
+      facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForJoinProbeDrivers,
+      facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForMergeJoinRightSideDrivers,
+      facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForMemoryDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForConnectorDrivers,
+      facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
+      kCounterNumBlockedWaitForSpillDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumBlockedYieldDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterNumStuckDrivers, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
       kCounterTotalPartitionedOutputBuffer, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
+  DEFINE_METRIC(
       kCounterPartitionedOutputBufferGetDataLatencyMs,
       facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterOsUserCpuTimeMicros, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterOsSystemCpuTimeMicros, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterOsNumSoftPageFaults, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterOsNumHardPageFaults, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
+  DEFINE_METRIC(kCounterOsUserCpuTimeMicros, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterOsSystemCpuTimeMicros, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterOsNumSoftPageFaults, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(kCounterOsNumHardPageFaults, facebook::velox::StatType::AVG);
+  DEFINE_METRIC(
       kCounterOsNumVoluntaryContextSwitches, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
+  DEFINE_METRIC(
       kCounterOsNumForcedContextSwitches, facebook::velox::StatType::AVG);
-  REPORT_ADD_HISTOGRAM_EXPORT_PERCENTILE(
+  DEFINE_HISTOGRAM_METRIC(
       kCounterExchangeSourcePeakQueuedBytes,
       1l * 1024 * 1024 * 1024,
       0,
       62l * 1024 * 1024 * 1024, // max bucket value: 62GB
       100);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumEmptyEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumSharedEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumExclusiveEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumPrefetchedEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheTotalTinyBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheTotalLargeBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheTotalTinyPaddingBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheTotalLargePaddingBytes,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheTotalPrefetchBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheTotalTinyPaddingBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheSumEvictScore, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumCumulativeHit, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumHit, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheCumulativeHitBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheHitBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumCumulativeNew, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumNew, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumCumulativeEvict, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumEvict, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumCumulativeEvictChecks,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumEvictChecks, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumCumulativeWaitExclusive,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumWaitExclusive, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumCumulativeAllocClocks,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterMemoryCacheNumAllocClocks, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeReadEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeReadBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeWrittenEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeWrittenBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeCachedEntries, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeCachedBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeOpenSsdErrors, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeOpenCheckpointErrors,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeOpenLogErrors, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeDeleteCheckpointErrors,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeGrowFileErrors, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeWriteSsdErrors, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeWriteCheckpointErrors,
-      facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeReadSsdErrors, facebook::velox::StatType::AVG);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSsdCacheCumulativeReadCheckpointErrors,
-      facebook::velox::StatType::AVG);
-  // Disk spilling stats.
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillRuns, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpilledFiles, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpilledRows, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpilledBytes, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillFillTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillSortTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillSerializationTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillDiskWrites, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillFlushTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillWriteTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterSpillMemoryBytes, facebook::velox::StatType::AVG);
-  REPORT_ADD_HISTOGRAM_EXPORT_PERCENTILE(
-      kCounterSpillPeakMemoryBytes,
-      1l * 512 * 1024 * 1024,
-      0,
-      20l * 1024 * 1024 * 1024, // max bucket value: 20GB
-      100);
-  // Memory arbitrator stats.
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorNumRequests, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorNumAborted, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorNumFailures, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorQueueTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorArbitrationTimeUs, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorNumShrunkBytes, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorNumReclaimedBytes, facebook::velox::StatType::SUM);
-  REPORT_ADD_STAT_EXPORT_TYPE(
-      kCounterArbitratorFreeCapacityBytes, facebook::velox::StatType::AVG);
 
   // NOTE: Metrics type exporting for file handle cache counters are in
   // PeriodicTaskManager because they have dynamic names. The following counters

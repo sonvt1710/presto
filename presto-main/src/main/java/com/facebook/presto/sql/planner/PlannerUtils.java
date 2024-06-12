@@ -26,6 +26,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.TableLayout;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.SourceLocation;
+import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.Assignments;
@@ -37,10 +38,12 @@ import com.facebook.presto.spi.plan.PlanNodeIdAllocator;
 import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.spi.relation.CallExpression;
+import com.facebook.presto.spi.relation.ConstantExpression;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.SpecialFormExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.facebook.presto.sql.analyzer.Field;
+import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.planPrinter.PlanPrinter;
 import com.facebook.presto.sql.relational.FunctionResolution;
@@ -69,10 +72,13 @@ import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.common.type.DateType.DATE;
 import static com.facebook.presto.common.type.IntegerType.INTEGER;
 import static com.facebook.presto.common.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.ConnectorId.isInternalSystemConnector;
+import static com.facebook.presto.spi.plan.JoinDistributionType.REPLICATED;
 import static com.facebook.presto.spi.plan.ProjectNode.Locality.LOCAL;
 import static com.facebook.presto.sql.analyzer.ExpressionTreeUtils.getSourceLocation;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
-import static com.facebook.presto.sql.planner.plan.JoinNode.DistributionType.REPLICATED;
+import static com.facebook.presto.sql.planner.iterative.Lookup.noLookup;
+import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static com.facebook.presto.sql.relational.Expressions.call;
 import static com.facebook.presto.sql.relational.Expressions.constant;
 import static com.facebook.presto.sql.relational.Expressions.variable;
@@ -80,8 +86,10 @@ import static com.facebook.presto.type.TypeUtils.NULL_HASH_CODE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Streams.forEachPair;
 import static java.util.Arrays.asList;
+import static java.util.function.Function.identity;
 
 public class PlannerUtils
 {
@@ -185,6 +193,19 @@ public class PlannerUtils
                 LOCAL);
     }
 
+    // Add a projection node, which assignment new value if output exists in variableMap, otherwise identity assignment
+    public static PlanNode addOverrideProjection(PlanNode source, PlanNodeIdAllocator planNodeIdAllocator, Map<VariableReferenceExpression, ? extends RowExpression> variableMap)
+    {
+        // When source node output duplicate variables (at least possible for LateralJoin node), it will fail the assignment builder, skip here
+        if (variableMap.isEmpty() || source.getOutputVariables().stream().noneMatch(variableMap::containsKey)
+                || source.getOutputVariables().stream().distinct().count() != source.getOutputVariables().size()) {
+            return source;
+        }
+        Assignments.Builder assignmentsBuilder = Assignments.builder();
+        assignmentsBuilder.putAll(source.getOutputVariables().stream().collect(toImmutableMap(identity(), x -> variableMap.containsKey(x) ? variableMap.get(x) : x)));
+        return new ProjectNode(source.getSourceLocation(), planNodeIdAllocator.getNextId(), source, assignmentsBuilder.build(), LOCAL);
+    }
+
     public static PlanNode restrictOutput(PlanNode source, PlanNodeIdAllocator planNodeIdAllocator, List<VariableReferenceExpression> outputVariables)
     {
         Assignments.Builder assignments = Assignments.builder();
@@ -264,6 +285,7 @@ public class PlannerUtils
                     ImmutableList.of(),
                     AggregationNode.Step.SINGLE,
                     Optional.empty(),
+                    Optional.empty(),
                     Optional.empty()),
                 planNodeIdAllocator,
                 variableAllocator,
@@ -320,14 +342,21 @@ public class PlannerUtils
         List<VariableReferenceExpression> newOutputVariables = outputVariablesBuilder.build();
         ImmutableMap<VariableReferenceExpression, ColumnHandle> newAssignments = assignmentsBuilder.build();
 
+        TableHandle oldTableHandle = scanNode.getTable();
+        TableHandle newTableHandle = new TableHandle(
+                oldTableHandle.getConnectorId(),
+                oldTableHandle.getConnectorHandle(),
+                oldTableHandle.getTransaction(),
+                oldTableHandle.getLayout());
+
         return new TableScanNode(
                 scanNode.getSourceLocation(),
                 planNodeIdAllocator.getNextId(),
-                scanLayout.getNewTableHandle(),
+                newTableHandle,
                 newOutputVariables,
                 newAssignments,
                 scanNode.getTableConstraints(),
-                scanLayout.getPredicate(),
+                scanNode.getCurrentConstraint(),
                 scanNode.getEnforcedConstraint());
     }
 
@@ -470,5 +499,24 @@ public class PlannerUtils
     public static boolean isBroadcastJoin(JoinNode joinNode)
     {
         return joinNode.getDistributionType().isPresent() && joinNode.getDistributionType().get() == REPLICATED;
+    }
+
+    public static boolean containsSystemTableScan(PlanNode plan)
+    {
+        return containsSystemTableScan(plan, noLookup());
+    }
+
+    public static boolean containsSystemTableScan(PlanNode plan, Lookup lookup)
+    {
+        return searchFrom(plan, lookup)
+                .where(planNode -> planNode instanceof TableScanNode && isInternalSystemConnector(((TableScanNode) planNode).getTable().getConnectorId()))
+                .matches();
+    }
+
+    public static boolean isConstant(RowExpression expression, Type type, Object value)
+    {
+        return expression instanceof ConstantExpression &&
+                ((ConstantExpression) expression).getType() == type &&
+                ((ConstantExpression) expression).getValue() == value;
     }
 }

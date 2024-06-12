@@ -29,6 +29,9 @@ import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.analyzer.MetadataResolver;
 import com.facebook.presto.spi.analyzer.ViewDefinition;
+import com.facebook.presto.spi.constraints.NotNullConstraint;
+import com.facebook.presto.spi.constraints.PrimaryKeyConstraint;
+import com.facebook.presto.spi.constraints.UniqueConstraint;
 import com.facebook.presto.spi.function.FunctionKind;
 import com.facebook.presto.spi.function.Signature;
 import com.facebook.presto.spi.function.SqlFunction;
@@ -47,6 +50,7 @@ import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.AstVisitor;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.ColumnDefinition;
+import com.facebook.presto.sql.tree.ConstraintSpecification;
 import com.facebook.presto.sql.tree.CreateFunction;
 import com.facebook.presto.sql.tree.CreateMaterializedView;
 import com.facebook.presto.sql.tree.CreateTable;
@@ -141,6 +145,8 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.VIEW_PARSE_ERROR;
 import static com.facebook.presto.sql.tree.BooleanLiteral.FALSE_LITERAL;
 import static com.facebook.presto.sql.tree.BooleanLiteral.TRUE_LITERAL;
+import static com.facebook.presto.sql.tree.ConstraintSpecification.ConstraintType.PRIMARY_KEY;
+import static com.facebook.presto.sql.tree.ConstraintSpecification.ConstraintType.UNIQUE;
 import static com.facebook.presto.sql.tree.LogicalBinaryExpression.and;
 import static com.facebook.presto.sql.tree.RoutineCharacteristics.Determinism;
 import static com.facebook.presto.sql.tree.RoutineCharacteristics.Language;
@@ -151,6 +157,7 @@ import static com.facebook.presto.sql.tree.ShowCreate.Type.VIEW;
 import static com.facebook.presto.util.AnalyzerUtil.createParsingOptions;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
@@ -515,18 +522,55 @@ final class ShowQueriesRewrite
 
                 ConnectorTableMetadata connectorTableMetadata = metadata.getTableMetadata(session, tableHandle.get()).getMetadata();
 
+                Set<String> notNullColumns = connectorTableMetadata.getTableConstraintsHolder().getTableConstraints()
+                        .stream()
+                        .filter(constraint -> constraint instanceof NotNullConstraint)
+                        .map(constraint -> constraint.getColumns().stream().findFirst().get())
+                        .collect(toImmutableSet());
+
                 Map<String, PropertyMetadata<?>> allColumnProperties = metadata.getColumnPropertyManager().getAllProperties().get(tableHandle.get().getConnectorId());
                 List<TableElement> columns = connectorTableMetadata.getColumns().stream()
                         .filter(column -> !column.isHidden())
                         .map(column -> {
                             List<Property> propertyNodes = buildProperties(objectName, Optional.of(column.getName()), INVALID_COLUMN_PROPERTY, column.getProperties(), allColumnProperties);
-                            return new ColumnDefinition(QueryUtil.quotedIdentifier(column.getName()), column.getType().getDisplayName(), column.isNullable(), propertyNodes, Optional.ofNullable(column.getComment()));
+                            return new ColumnDefinition(
+                                    QueryUtil.quotedIdentifier(column.getName()),
+                                    column.getType().getDisplayName(),
+                                    column.isNullable() && !notNullColumns.contains(column.getName()),
+                                    propertyNodes,
+                                    Optional.ofNullable(column.getComment()));
                         })
-                        .collect(toImmutableList());
+                        .collect(toList());
 
                 Map<String, Object> properties = connectorTableMetadata.getProperties();
                 Map<String, PropertyMetadata<?>> allTableProperties = metadata.getTablePropertyManager().getAllProperties().get(tableHandle.get().getConnectorId());
                 List<Property> propertyNodes = buildProperties(objectName, Optional.empty(), INVALID_TABLE_PROPERTY, properties, allTableProperties);
+
+                columns.addAll(connectorTableMetadata.getTableConstraintsHolder().getTableConstraints()
+                        .stream()
+                        .map(constraint -> {
+                            if (constraint instanceof PrimaryKeyConstraint) {
+                                return Optional.of(new ConstraintSpecification(constraint.getName(),
+                                        constraint.getColumns().stream().collect(toImmutableList()),
+                                        PRIMARY_KEY,
+                                        constraint.isEnabled(),
+                                        constraint.isRely(),
+                                        constraint.isEnforced()));
+                            }
+                            else if (constraint instanceof UniqueConstraint) {
+                                return Optional.of(new ConstraintSpecification(constraint.getName(),
+                                        constraint.getColumns().stream().collect(toImmutableList()),
+                                        UNIQUE,
+                                        constraint.isEnabled(),
+                                        constraint.isRely(),
+                                        constraint.isEnforced()));
+                            }
+                            return Optional.empty();
+                        })
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .map(ConstraintSpecification.class::cast)
+                        .collect(toImmutableList()));
 
                 CreateTable createTable = new CreateTable(
                         QualifiedName.of(objectName.getCatalogName(), objectName.getSchemaName(), objectName.getObjectName()),

@@ -27,6 +27,7 @@ import com.facebook.presto.spi.relation.DomainTranslator.ExtractionResult;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.SpecialFormExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.sql.TestingRowExpressionTranslator;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.relational.FunctionResolution;
 import com.facebook.presto.sql.relational.RowExpressionDomainTranslator;
@@ -43,6 +44,7 @@ import org.testng.annotations.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -199,9 +201,9 @@ public class TestRowExpressionDomainTranslator
         assertEquals(toPredicate(tupleDomain), and(lessThan(C_BIGINT, bigintLiteral(4L)), not(bigintIn(C_BIGINT, ImmutableList.of(1L, 2L, 3L)))));
 
         testDomain = Domain.create(ValueSet.ofRanges(
-                Range.range(BIGINT, 1L, true, 3L, true),
-                Range.range(BIGINT, 5L, true, 7L, true),
-                Range.range(BIGINT, 9L, true, 11L, true)),
+                        Range.range(BIGINT, 1L, true, 3L, true),
+                        Range.range(BIGINT, 5L, true, 7L, true),
+                        Range.range(BIGINT, 9L, true, 11L, true)),
                 false);
 
         tupleDomain = withColumnDomains(ImmutableMap.<VariableReferenceExpression, Domain>builder().put(C_BIGINT, testDomain).build());
@@ -210,7 +212,7 @@ public class TestRowExpressionDomainTranslator
 
         testDomain = Domain.create(
                 ValueSet.ofRanges(
-                        Range.lessThan(BIGINT, 4L))
+                                Range.lessThan(BIGINT, 4L))
                         .intersect(ValueSet.all(BIGINT)
                                 .subtract(ValueSet.ofRanges(Range.equal(BIGINT, 1L), Range.equal(BIGINT, 2L), Range.equal(BIGINT, 3L))))
                         .union(ValueSet.ofRanges(Range.range(BIGINT, 7L, true, 9L, true))), false);
@@ -934,6 +936,35 @@ public class TestRowExpressionDomainTranslator
     }
 
     @Test
+    public void testComplexDisjunctExpression()
+    {
+        TestingRowExpressionTranslator rowExpressionTranslator = new TestingRowExpressionTranslator(metadata);
+        VariableReferenceExpression left = new VariableReferenceExpression(Optional.empty(), "L", INTEGER);
+        VariableReferenceExpression right = new VariableReferenceExpression(Optional.empty(), "R", INTEGER);
+        Map<String, Type> types = ImmutableMap.of("L", INTEGER, "R", INTEGER);
+
+        // Inferring of the 'right' variable  does not occur, since equality inference is not performed
+        ExtractionResult result = fromPredicate(rowExpressionTranslator.translate("L = 10 and R = L + 20", types));
+        assertEquals(result.getTupleDomain(),
+                withColumnDomains(ImmutableMap.of(
+                        left, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 10L)), false))));
+        assertEquals(result.getRemainingExpression(), rowExpressionTranslator.translate("R = L + 20", types));
+
+        // The 'right' variable cannot be inferred as [5] since we have 'R = L + 20' as one of the expressions in the disjunction
+        result = fromPredicate(rowExpressionTranslator.translate("(L = 10 and R = L + 20) or (L = 42 AND R = 5)", types));
+        assertEquals(result.getTupleDomain(),
+                withColumnDomains(ImmutableMap.of(
+                        left, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 10L), Range.equal(INTEGER, 42L)), false))));
+
+        // Tuple domains for both 'left' and 'right' can be inferred
+        result = fromPredicate(rowExpressionTranslator.translate("(L = 10 and R = 20) or (L = 42 AND R = 5)", types));
+        assertEquals(result.getTupleDomain(),
+                withColumnDomains(ImmutableMap.of(
+                        left, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 10L), Range.equal(INTEGER, 42L)), false),
+                        right, Domain.create(ValueSet.ofRanges(Range.equal(INTEGER, 20L), Range.equal(INTEGER, 5L)), false))));
+    }
+
+    @Test
     void testMultipleCoercionsOnSymbolSide()
     {
         assertPredicateTranslates(
@@ -1413,7 +1444,7 @@ public class TestRowExpressionDomainTranslator
 
         public boolean isFractional()
         {
-            return input.getType() == DOUBLE || input.getType() == REAL || (input.getType() instanceof DecimalType && ((DecimalType) input.getType()).getScale() > 0);
+            return input.getType().equals(DOUBLE) || input.getType().equals(REAL) || (input.getType() instanceof DecimalType && ((DecimalType) input.getType()).getScale() > 0);
         }
     }
 }

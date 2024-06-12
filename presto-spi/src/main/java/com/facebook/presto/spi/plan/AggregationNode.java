@@ -52,6 +52,7 @@ public final class AggregationNode
     private final Step step;
     private final Optional<VariableReferenceExpression> hashVariable;
     private final Optional<VariableReferenceExpression> groupIdVariable;
+    private final Optional<Integer> aggregationId;
     private final List<VariableReferenceExpression> outputs;
 
     @JsonCreator
@@ -64,9 +65,10 @@ public final class AggregationNode
             @JsonProperty("preGroupedVariables") List<VariableReferenceExpression> preGroupedVariables,
             @JsonProperty("step") Step step,
             @JsonProperty("hashVariable") Optional<VariableReferenceExpression> hashVariable,
-            @JsonProperty("groupIdVariable") Optional<VariableReferenceExpression> groupIdVariable)
+            @JsonProperty("groupIdVariable") Optional<VariableReferenceExpression> groupIdVariable,
+            @JsonProperty("aggregationId")Optional<Integer> aggregationId)
     {
-        this(sourceLocation, id, Optional.empty(), source, aggregations, groupingSets, preGroupedVariables, step, hashVariable, groupIdVariable);
+        this(sourceLocation, id, Optional.empty(), source, aggregations, groupingSets, preGroupedVariables, step, hashVariable, groupIdVariable, aggregationId);
     }
 
     public AggregationNode(
@@ -79,7 +81,8 @@ public final class AggregationNode
             List<VariableReferenceExpression> preGroupedVariables,
             Step step,
             Optional<VariableReferenceExpression> hashVariable,
-            Optional<VariableReferenceExpression> groupIdVariable)
+            Optional<VariableReferenceExpression> groupIdVariable,
+            Optional<Integer> aggregationId)
     {
         super(sourceLocation, id, statsEquivalentPlanNode);
 
@@ -91,6 +94,7 @@ public final class AggregationNode
         this.groupingSets = groupingSets;
 
         this.groupIdVariable = requireNonNull(groupIdVariable);
+        this.aggregationId = requireNonNull(aggregationId);
 
         boolean noOrderBy = aggregations.values().stream()
                 .map(Aggregation::getOrderBy)
@@ -220,6 +224,12 @@ public final class AggregationNode
         return groupIdVariable;
     }
 
+    @JsonProperty
+    public Optional<Integer> getAggregationId()
+    {
+        return aggregationId;
+    }
+
     public boolean hasOrderings()
     {
         return aggregations.values().stream()
@@ -236,14 +246,14 @@ public final class AggregationNode
     @Override
     public PlanNode assignStatsEquivalentPlanNode(Optional<PlanNode> statsEquivalentPlanNode)
     {
-        return new AggregationNode(getSourceLocation(), getId(), statsEquivalentPlanNode, source, aggregations, groupingSets, preGroupedVariables, step, hashVariable, groupIdVariable);
+        return new AggregationNode(getSourceLocation(), getId(), statsEquivalentPlanNode, source, aggregations, groupingSets, preGroupedVariables, step, hashVariable, groupIdVariable, aggregationId);
     }
 
     @Override
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         checkArgument(newChildren.size() == 1, "Unexpected number of elements in list newChildren");
-        return new AggregationNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), newChildren.get(0), aggregations, groupingSets, preGroupedVariables, step, hashVariable, groupIdVariable);
+        return new AggregationNode(getSourceLocation(), getId(), getStatsEquivalentPlanNode(), newChildren.get(0), aggregations, groupingSets, preGroupedVariables, step, hashVariable, groupIdVariable, aggregationId);
     }
 
     public boolean isStreamable()

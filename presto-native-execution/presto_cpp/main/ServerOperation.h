@@ -18,24 +18,40 @@
 
 namespace facebook::presto {
 
-/// Defines a server operation.
+/// Defines a server operation. A server operation is accessed through http
+/// endpoint /v1/operation/<target>/<action>?param1=value1&param2=value2...
 struct ServerOperation {
   /// The target this operation is operating upon
   enum class Target {
     kConnector,
     kSystemConfig,
     kVeloxQueryConfig,
-    kDebug,
+    kTask,
+    kServer,
   };
 
   /// The action this operation is trying to take
   enum class Action {
+    /// Applicable to kConnector. Clears the connector cache.
     kClearCache,
+    /// Applicable to kConnector. Returns stats of the connector cache.
     kGetCacheStats,
+    /// Applicable to kSystemConfig & kVeloxQueryConfig. Modifies the value of a
+    /// single property.
     kSetProperty,
+    /// Applicable to kSystemConfig & kVeloxQueryConfig. Returns the value of a
+    /// single property.
     kGetProperty,
-    kTask,
+    /// Applicable to kTask. Returns detailed info on one Task.
+    kGetDetail,
+    /// Applicable to kTask. Returns brief info on all Tasks.
+    kListAll,
+    /// Applicable to kServer. Returns data on all TraceContext objets.
     kTrace,
+    /// Applicable to kServer. Change state of the worker node.
+    kSetState,
+    /// Applicable to kServer. Enable/disable Presto Announcer.
+    kAnnouncer,
   };
 
   static const folly::F14FastMap<std::string, Target> kTargetLookup;

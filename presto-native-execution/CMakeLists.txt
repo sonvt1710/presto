@@ -28,9 +28,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 message("Appending CMAKE_CXX_FLAGS with ${SCRIPT_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SCRIPT_CXX_FLAGS}")
-if("${TREAT_WARNINGS_AS_ERRORS}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
-endif()
 
 # Known warnings that are benign can be disabled.
 set(DISABLED_WARNINGS
@@ -57,6 +54,8 @@ option(PRESTO_ENABLE_PARQUET "Enable Parquet support" OFF)
 option(PRESTO_ENABLE_REMOTE_FUNCTIONS "Enable remote function support" OFF)
 
 option(PRESTO_ENABLE_TESTING "Enable tests" ON)
+
+option(PRESTO_ENABLE_JWT "Enable JWT (JSON Web Token) authentication" OFF)
 
 # Set all Velox options below
 add_compile_definitions(FOLLY_HAVE_INT128_T=1)
@@ -120,13 +119,6 @@ find_package(
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
 find_package(gflags COMPONENTS shared)
-
-find_library(ANTLR4_RUNTIME antlr4-runtime)
-find_path(
-  ANTLR4_RUNTIME_INCLUDE_DIR
-  NAMES antlr4-runtime.h
-  PATH_SUFFIXES antlr4-runtime)
-include_directories(SYSTEM ${ANTLR4_RUNTIME_INCLUDE_DIR})
 
 find_library(GLOG glog)
 
@@ -195,10 +187,29 @@ set(VELOX_GTEST_INCUDE_DIR "velox/third_party/googletest/googletest/include")
 add_subdirectory(velox)
 
 if(PRESTO_ENABLE_TESTING)
+  set(BUILD_TESTING ON) # some third-party dependency could have disabled this.
   include(CTest) # include after project() but before add_subdirectory()
   include_directories(${VELOX_GTEST_INCUDE_DIR})
 else()
   add_definitions(-DVELOX_DISABLE_GOOGLETEST)
+endif()
+
+if(PRESTO_ENABLE_JWT)
+  add_compile_definitions(PRESTO_ENABLE_JWT)
+endif()
+
+if("${MAX_LINK_JOBS}")
+  set_property(GLOBAL APPEND PROPERTY JOB_POOLS
+                                      "presto_link_job_pool=${MAX_LINK_JOBS}")
+else()
+  set_property(GLOBAL APPEND PROPERTY JOB_POOLS "presto_link_job_pool=8")
+endif()
+set(CMAKE_JOB_POOL_LINK presto_link_job_pool)
+
+# Adding this down here prevents warnings in dependencies from stopping the
+# build
+if("${TREAT_WARNINGS_AS_ERRORS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
 endif()
 
 add_subdirectory(presto_cpp)

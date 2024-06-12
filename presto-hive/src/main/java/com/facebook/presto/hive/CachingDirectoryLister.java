@@ -13,9 +13,11 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.common.RuntimeStats;
 import com.facebook.presto.hive.filesystem.ExtendedFileSystem;
 import com.facebook.presto.hive.metastore.Partition;
 import com.facebook.presto.hive.metastore.Table;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -35,6 +37,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import static com.facebook.presto.common.RuntimeMetricName.DIRECTORY_LISTING_CACHE_HIT;
+import static com.facebook.presto.common.RuntimeMetricName.DIRECTORY_LISTING_CACHE_MISS;
+import static com.facebook.presto.common.RuntimeMetricName.DIRECTORY_LISTING_TIME_NANOS;
+import static com.facebook.presto.common.RuntimeMetricName.FILES_READ_COUNT;
+import static com.facebook.presto.common.RuntimeUnit.NANO;
+import static com.facebook.presto.common.RuntimeUnit.NONE;
+import static com.facebook.presto.spi.StandardErrorCode.INVALID_PROCEDURE_ARGUMENT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.util.Objects.requireNonNull;
@@ -44,8 +53,7 @@ public class CachingDirectoryLister
 {
     private final Cache<Path, List<HiveFileInfo>> cache;
     private final CachedTableChecker cachedTableChecker;
-
-    protected final DirectoryLister delegate;
+    private final DirectoryLister delegate;
 
     @Inject
     public CachingDirectoryLister(@ForCachingDirectoryLister DirectoryLister delegate, HiveClientConfig hiveClientConfig)
@@ -78,23 +86,30 @@ public class CachingDirectoryLister
             NamenodeStats namenodeStats,
             HiveDirectoryContext hiveDirectoryContext)
     {
+        RuntimeStats runtimeStats = hiveDirectoryContext.getRuntimeStats();
+        long startTime = System.nanoTime();
         if (hiveDirectoryContext.isCacheable()) {
             // DO NOT USE Caching, when cache is disabled.
             // This is useful for debugging issues, when cache is explicitly disabled via session property.
             List<HiveFileInfo> files = cache.getIfPresent(path);
             if (files != null) {
+                runtimeStats.addMetricValue(DIRECTORY_LISTING_CACHE_HIT, NONE, 1);
+                runtimeStats.addMetricValue(DIRECTORY_LISTING_TIME_NANOS, NANO, System.nanoTime() - startTime);
+                runtimeStats.addMetricValue(FILES_READ_COUNT, NONE, files.size());
                 return files.iterator();
             }
         }
 
+        runtimeStats.addMetricValue(DIRECTORY_LISTING_CACHE_MISS, NONE, 1);
         Iterator<HiveFileInfo> iterator = delegate.list(fileSystem, table, path, partition, namenodeStats, hiveDirectoryContext);
+        runtimeStats.addMetricValue(DIRECTORY_LISTING_TIME_NANOS, NANO, System.nanoTime() - startTime);
         if (hiveDirectoryContext.isCacheable() && cachedTableChecker.isCachedTable(table.getSchemaTableName())) {
-            return cachingIterator(iterator, path);
+            return fileCountTrackingIterator(iterator, path, runtimeStats, true);
         }
-        return iterator;
+        return fileCountTrackingIterator(iterator, path, runtimeStats, false);
     }
 
-    private Iterator<HiveFileInfo> cachingIterator(Iterator<HiveFileInfo> iterator, Path path)
+    private Iterator<HiveFileInfo> fileCountTrackingIterator(Iterator<HiveFileInfo> iterator, Path path, RuntimeStats runtimeStats, boolean enableCaching)
     {
         return new Iterator<HiveFileInfo>()
         {
@@ -105,7 +120,10 @@ public class CachingDirectoryLister
             {
                 boolean hasNext = iterator.hasNext();
                 if (!hasNext) {
-                    cache.put(path, ImmutableList.copyOf(files));
+                    runtimeStats.addMetricValue(FILES_READ_COUNT, NONE, files.size());
+                    if (enableCaching) {
+                        cache.put(path, ImmutableList.copyOf(files));
+                    }
                 }
                 return hasNext;
             }
@@ -118,6 +136,24 @@ public class CachingDirectoryLister
                 return next;
             }
         };
+    }
+
+    public void invalidateDirectoryListCache(Optional<String> directoryPath)
+    {
+        if (directoryPath.isPresent()) {
+            if (directoryPath.get().isEmpty()) {
+                throw new PrestoException(INVALID_PROCEDURE_ARGUMENT, "Directory path can not be a empty string");
+            }
+            Path path = new Path(directoryPath.get());
+            List<HiveFileInfo> files = cache.getIfPresent(path);
+            if (files == null) {
+                throw new PrestoException(INVALID_PROCEDURE_ARGUMENT, "Given directory path is not cached : " + directoryPath);
+            }
+            cache.invalidate(path);
+        }
+        else {
+            flushCache();
+        }
     }
 
     @Managed
@@ -154,6 +190,18 @@ public class CachingDirectoryLister
     public long getRequestCount()
     {
         return cache.stats().requestCount();
+    }
+
+    @Managed
+    public long getEvictionCount()
+    {
+        return cache.stats().evictionCount();
+    }
+
+    @Managed
+    public long getSize()
+    {
+        return cache.size();
     }
 
     private static class CachedTableChecker

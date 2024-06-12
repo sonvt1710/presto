@@ -41,6 +41,7 @@ import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.facebook.presto.sql.planner.NodePartitioningManager;
 import com.facebook.presto.sql.planner.PartitioningHandle;
+import com.facebook.presto.sql.planner.PlanFragmenterUtils;
 import com.facebook.presto.sql.planner.SplitSourceFactory;
 import com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
@@ -309,6 +310,8 @@ public class SectionExecutionFactory
                     .map(RemoteTask::getTaskStatus)
                     .collect(toList());
 
+            Optional<Integer> taskNumberIfScaledWriter = PlanFragmenterUtils.getTableWriterTasks(plan.getFragment().getRoot());
+
             ScaledWriterScheduler scheduler = new ScaledWriterScheduler(
                     stageExecution,
                     sourceTasksProvider,
@@ -316,7 +319,8 @@ public class SectionExecutionFactory
                     nodeScheduler.createNodeSelector(session, null, nodePredicate),
                     scheduledExecutor,
                     getWriterMinSize(session),
-                    isOptimizedScaleWriterProducerBuffer(session));
+                    isOptimizedScaleWriterProducerBuffer(session),
+                    taskNumberIfScaledWriter);
             whenAllStages(childStageExecutions, StageExecutionState::isDone)
                     .addListener(scheduler::finish, directExecutor());
             return scheduler;
@@ -357,9 +361,10 @@ public class SectionExecutionFactory
                 }
                 else {
                     // cannot use dynamic lifespan schedule
-                    verify(!plan.getFragment().getStageExecutionDescriptor().isDynamicLifespanSchedule());
+                    verify(!plan.getFragment().getStageExecutionDescriptor().isDynamicLifespanSchedule(),
+                            "Stage was planned with DYNAMIC_LIFESPAN_SCHEDULE_GROUPED_EXECUTION, but is not eligible.");
 
-                    // remote source requires nodePartitionMap
+                    // Partitioned remote source requires nodePartitionMap
                     NodePartitionMap nodePartitionMap = partitioningCache.apply(plan.getFragment().getPartitioning());
                     if (groupedExecutionForStage) {
                         checkState(connectorPartitionHandles.size() == nodePartitionMap.getBucketToPartition().length);

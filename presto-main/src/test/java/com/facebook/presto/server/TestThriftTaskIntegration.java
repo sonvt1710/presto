@@ -34,6 +34,7 @@ import com.facebook.presto.execution.TaskSource;
 import com.facebook.presto.execution.TaskState;
 import com.facebook.presto.execution.TaskStatus;
 import com.facebook.presto.execution.buffer.BufferResult;
+import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.buffer.ThriftBufferResult;
@@ -243,6 +244,12 @@ public class TestThriftTaskIntegration
                 public ListenableFuture<BufferResult> getTaskResults(TaskId taskId, OutputBufferId bufferId, long startingSequenceId, DataSize maxSize)
                 {
                     return Futures.immediateFuture(emptyResults("test", 1, true));
+                }
+
+                @Override
+                public OutputBufferInfo getOutputBufferInfo(TaskId taskId)
+                {
+                    throw new UnsupportedOperationException();
                 }
 
                 @Override

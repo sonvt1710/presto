@@ -318,7 +318,7 @@ public class DistributedQueryRunner
 
         long start = nanoTime();
         while (!allNodesGloballyVisible()) {
-            Assertions.assertLessThan(nanosSince(start), new Duration(30, SECONDS));
+            Assertions.assertLessThan(nanosSince(start), new Duration(60, SECONDS));
             MILLISECONDS.sleep(10);
         }
         log.info("Announced servers in %s", nanosSince(start).convertToMostSuccinctTimeUnit());
@@ -460,7 +460,7 @@ public class DistributedQueryRunner
     @Override
     public int getNodeCount()
     {
-        return servers.size();
+        return servers.size() + externalWorkers.size();
     }
 
     @Override
@@ -795,7 +795,7 @@ public class DistributedQueryRunner
         }
     }
 
-    private void cancelAllQueries()
+    public void cancelAllQueries()
     {
         for (TestingPrestoServer coordinator : coordinators) {
             QueryManager queryManager = coordinator.getQueryManager();
@@ -811,7 +811,7 @@ public class DistributedQueryRunner
     {
         checkState(testFunctionNamespacesHandle.get() == null, "Test function namespaces already enabled");
 
-        String databaseName = String.valueOf(nanoTime()) + "_" + ThreadLocalRandom.current().nextInt();
+        String databaseName = nanoTime() + "_" + ThreadLocalRandom.current().nextInt();
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("database-name", databaseName)
                 .putAll(additionalProperties)

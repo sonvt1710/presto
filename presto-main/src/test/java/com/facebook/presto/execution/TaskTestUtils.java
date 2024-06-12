@@ -128,7 +128,7 @@ public final class TaskTestUtils
                         .withBucketToPartition(Optional.of(new int[1])),
                 StageExecutionDescriptor.ungroupedExecution(),
                 false,
-                StatsAndCosts.empty(),
+                Optional.of(StatsAndCosts.empty()),
                 Optional.empty());
     }
 
@@ -169,6 +169,7 @@ public final class TaskTestUtils
                 new IndexJoinLookupStats(),
                 new TaskManagerConfig(),
                 new MemoryManagerConfig(),
+                new FeaturesConfig(),
                 new GenericSpillerFactory((types, spillContext, memoryContext) -> {
                     throw new UnsupportedOperationException();
                 }),
@@ -180,7 +181,7 @@ public final class TaskTestUtils
                 },
                 new BlockEncodingManager(),
                 new PagesIndex.TestingFactory(false),
-                new JoinCompiler(MetadataManager.createTestMetadataManager(), new FeaturesConfig()),
+                new JoinCompiler(MetadataManager.createTestMetadataManager()),
                 new LookupJoinOperators(),
                 new OrderingCompiler(),
                 jsonCodec(TableCommitContext.class),

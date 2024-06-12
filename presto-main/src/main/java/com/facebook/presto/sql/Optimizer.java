@@ -36,6 +36,7 @@ import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.IterativeOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
+import com.facebook.presto.sql.planner.optimizations.PlanOptimizerResult;
 import com.facebook.presto.sql.planner.optimizations.StatsRecordingPlanOptimizer;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
@@ -113,19 +114,15 @@ public class Optimizer
                     throw new PrestoException(QUERY_PLANNING_TIMEOUT, String.format("The query optimizer exceeded the timeout of %s.", getQueryAnalyzerTimeout(session).toString()));
                 }
                 long start = System.nanoTime();
-                PlanNode newRoot = optimizer.optimize(root, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
-                requireNonNull(newRoot, format("%s returned a null plan", optimizer.getClass().getName()));
+                PlanOptimizerResult optimizerResult = optimizer.optimize(root, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
+                requireNonNull(optimizerResult, format("%s returned a null plan", optimizer.getClass().getName()));
                 if (enableVerboseRuntimeStats || trackOptimizerRuntime(session, optimizer)) {
-                    String optimizerName = optimizer.getClass().getSimpleName();
-                    if (optimizer instanceof StatsRecordingPlanOptimizer) {
-                        optimizerName = format("%s:%s", optimizerName, ((StatsRecordingPlanOptimizer) optimizer).getDelegate().getClass().getSimpleName());
-                    }
-                    session.getRuntimeStats().addMetricValue(String.format("optimizer%sTimeNanos", optimizerName), NANO, System.nanoTime() - start);
+                    session.getRuntimeStats().addMetricValue(String.format("optimizer%sTimeNanos", getOptimizerNameForLog(optimizer)), NANO, System.nanoTime() - start);
                 }
                 TypeProvider types = TypeProvider.viewOf(variableAllocator.getVariables());
 
-                collectOptimizerInformation(optimizer, root, newRoot, types);
-                root = newRoot;
+                collectOptimizerInformation(optimizer, root, optimizerResult, types);
+                root = optimizerResult.getPlanNode();
             }
         }
 
@@ -145,11 +142,7 @@ public class Optimizer
             return false;
         }
         List<String> optimizers = Splitter.on(",").trimResults().splitToList(optimizerString);
-        String optimizerName = optimizer.getClass().getSimpleName();
-        if (optimizer instanceof StatsRecordingPlanOptimizer) {
-            optimizerName = ((StatsRecordingPlanOptimizer) optimizer).getDelegate().getClass().getSimpleName();
-        }
-        return optimizers.contains(optimizerName);
+        return optimizers.contains(getOptimizerNameForLog(optimizer));
     }
 
     private StatsAndCosts computeStats(PlanNode root, TypeProvider types)
@@ -159,33 +152,45 @@ public class Optimizer
                         (node instanceof JoinNode) || (node instanceof SemiJoinNode)).matches()) {
             StatsProvider statsProvider = new CachingStatsProvider(statsCalculator, session, types);
             CostProvider costProvider = new CachingCostProvider(costCalculator, statsProvider, Optional.empty(), session);
-            return StatsAndCosts.create(root, statsProvider, costProvider);
+            return StatsAndCosts.create(root, statsProvider, costProvider, session);
         }
         return StatsAndCosts.empty();
     }
 
-    private void collectOptimizerInformation(PlanOptimizer optimizer, PlanNode oldNode, PlanNode newNode, TypeProvider types)
+    private void collectOptimizerInformation(PlanOptimizer optimizer, PlanNode oldNode, PlanOptimizerResult planOptimizerResult, TypeProvider types)
     {
         if (optimizer instanceof IterativeOptimizer) {
             // iterative optimizers do their own recording of what rules got triggered
             return;
         }
 
-        String optimizerName = optimizer.getClass().getSimpleName();
-        boolean isTriggered = (oldNode != newNode);
+        String optimizerName = getOptimizerNameForLog(optimizer);
+        boolean isTriggered = planOptimizerResult.isOptimizerTriggered();
         boolean isApplicable =
                 isTriggered ||
                 !optimizer.isEnabled(session) && isVerboseOptimizerInfoEnabled(session) &&
                         optimizer.isApplicable(oldNode, session, TypeProvider.viewOf(variableAllocator.getVariables()), variableAllocator, idAllocator, warningCollector);
+        boolean isCostBased = isTriggered && optimizer.isCostBased(session);
+        String statsSource = optimizer.getStatsSource();
 
-        if (isTriggered || isApplicable) {
-            session.getOptimizerInformationCollector().addInformation(new PlanOptimizerInformation(optimizerName, isTriggered, Optional.of(isApplicable), Optional.empty()));
+        if (isTriggered || isApplicable || isCostBased) {
+            session.getOptimizerInformationCollector().addInformation(
+                    new PlanOptimizerInformation(optimizerName, isTriggered, Optional.of(isApplicable), Optional.empty(), Optional.of(isCostBased), statsSource == null ? Optional.empty() : Optional.of(statsSource)));
         }
 
         if (isTriggered && isVerboseOptimizerResults(session, optimizerName)) {
             String oldNodeStr = PlannerUtils.getPlanString(oldNode, session, types, metadata, false);
-            String newNodeStr = PlannerUtils.getPlanString(newNode, session, types, metadata, false);
+            String newNodeStr = PlannerUtils.getPlanString(planOptimizerResult.getPlanNode(), session, types, metadata, false);
             session.getOptimizerResultCollector().addOptimizerResult(optimizerName, oldNodeStr, newNodeStr);
         }
+    }
+
+    private String getOptimizerNameForLog(PlanOptimizer optimizer)
+    {
+        String optimizerName = optimizer.getClass().getSimpleName();
+        if (optimizer instanceof StatsRecordingPlanOptimizer) {
+            optimizerName = format("%s:%s", optimizerName, ((StatsRecordingPlanOptimizer) optimizer).getDelegate().getClass().getSimpleName());
+        }
+        return optimizerName;
     }
 }

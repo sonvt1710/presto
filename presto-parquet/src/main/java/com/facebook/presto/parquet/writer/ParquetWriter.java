@@ -23,6 +23,7 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import io.airlift.units.DataSize;
 import org.apache.parquet.column.ParquetProperties;
+import org.apache.parquet.column.ParquetProperties.Builder;
 import org.apache.parquet.format.ColumnMetaData;
 import org.apache.parquet.format.FileMetaData;
 import org.apache.parquet.format.RowGroup;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 
 import static com.facebook.presto.parquet.writer.ParquetDataOutput.createDataOutput;
+import static com.facebook.presto.parquet.writer.ParquetWriterOptions.DEFAULT_MAX_PAGE_SIZE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -48,7 +50,6 @@ import static java.lang.Math.min;
 import static java.lang.Math.toIntExact;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.util.Objects.requireNonNull;
-import static org.apache.parquet.column.ParquetProperties.WriterVersion.PARQUET_2_0;
 import static org.apache.parquet.hadoop.metadata.CompressionCodecName.BROTLI;
 import static org.apache.parquet.hadoop.metadata.CompressionCodecName.GZIP;
 import static org.apache.parquet.hadoop.metadata.CompressionCodecName.LZ4;
@@ -99,11 +100,19 @@ public class ParquetWriter
 
         this.messageType = requireNonNull(messageType, "messageType is null");
 
-        ParquetProperties parquetProperties = ParquetProperties.builder()
-                .withWriterVersion(PARQUET_2_0)
+        Builder parquetPropertiesBuilder = ParquetProperties.builder()
+                .withWriterVersion(writerOption.getWriterVersion())
                 .withPageSize(writerOption.getMaxPageSize())
-                .withDictionaryPageSize(writerOption.getMaxDictionaryPageSize())
-                .build();
+                .withDictionaryPageSize(writerOption.getMaxDictionaryPageSize());
+
+        // It's not thread-safe to share a single `ValuesWriterFactory` between all `ParquetProperties` instances with different page options.
+        // So set a separate `ValuesWriterFactory` instance to `ParquetProperties` with non-default page options on its creation,
+        //  and share a single `ValuesWriterFactory` instance between all `ParquetProperties` instances with default page options.
+        if (!DEFAULT_MAX_PAGE_SIZE.equals(DataSize.succinctBytes(writerOption.getMaxPageSize())) ||
+                !DEFAULT_MAX_PAGE_SIZE.equals(DataSize.succinctBytes(writerOption.getMaxDictionaryPageSize()))) {
+            parquetPropertiesBuilder.withValuesWriterFactory(ParquetWriters.getValuesWriterFactory(writerOption.getWriterVersion()));
+        }
+        ParquetProperties parquetProperties = parquetPropertiesBuilder.build();
         CompressionCodecName compressionCodecName = getCompressionCodecName(compressionCodecClass);
         this.columnWriters = ParquetWriters.getColumnWriters(messageType, primitiveTypes, parquetProperties, compressionCodecName);
 

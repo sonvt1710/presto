@@ -25,13 +25,16 @@ import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.SortingProperty;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.DistinctLimitNode;
+import com.facebook.presto.spi.plan.EquiJoinClause;
 import com.facebook.presto.spi.plan.FilterNode;
+import com.facebook.presto.spi.plan.JoinType;
 import com.facebook.presto.spi.plan.LimitNode;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
 import com.facebook.presto.spi.plan.OrderingScheme;
 import com.facebook.presto.spi.plan.OutputNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.ProjectNode;
+import com.facebook.presto.spi.plan.SortNode;
 import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.spi.plan.TopNNode;
 import com.facebook.presto.spi.plan.ValuesNode;
@@ -60,7 +63,7 @@ import com.facebook.presto.sql.planner.plan.RemoteSourceNode;
 import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
-import com.facebook.presto.sql.planner.plan.SortNode;
+import com.facebook.presto.sql.planner.plan.SequenceNode;
 import com.facebook.presto.sql.planner.plan.SpatialJoinNode;
 import com.facebook.presto.sql.planner.plan.StatisticsWriterNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
@@ -689,7 +692,7 @@ public class PropertyDerivations
                 // to take advantage of constant-folding for complex expressions
                 // However, that currently causes errors when those expressions operate on arrays or row types
                 // ("ROW comparison not supported for fields with null elements", etc)
-                Object value = new RowExpressionInterpreter(expression, metadata, session.toConnectorSession(), OPTIMIZED).optimize();
+                Object value = new RowExpressionInterpreter(expression, metadata.getFunctionAndTypeManager(), session.toConnectorSession(), OPTIMIZED).optimize();
 
                 if (value instanceof VariableReferenceExpression) {
                     ConstantExpression existingConstantValue = constants.get(value);
@@ -754,6 +757,12 @@ public class PropertyDerivations
             return ActualProperties.builder()
                     .global(singleStreamPartition())
                     .build();
+        }
+
+        public ActualProperties visitSequence(SequenceNode node, List<ActualProperties> context)
+        {
+            // Return the rightmost node properties
+            return context.get(context.size() - 1);
         }
 
         @Override
@@ -857,7 +866,7 @@ public class PropertyDerivations
         }
     }
 
-    static boolean spillPossible(Session session, JoinNode.Type joinType)
+    static boolean spillPossible(Session session, JoinType joinType)
     {
         if (!isSpillEnabled(session) || !isJoinSpillingEnabled(session)) {
             return false;
@@ -887,7 +896,7 @@ public class PropertyDerivations
     // Used to filter columns that are not exposed by join node
     // Or, if they are part of the equalities, to translate them
     // to the other symbol if that's exposed, instead.
-    public static Optional<VariableReferenceExpression> filterOrRewrite(Collection<VariableReferenceExpression> columns, List<JoinNode.EquiJoinClause> equalities, VariableReferenceExpression column)
+    public static Optional<VariableReferenceExpression> filterOrRewrite(Collection<VariableReferenceExpression> columns, List<EquiJoinClause> equalities, VariableReferenceExpression column)
     {
         // symbol is exposed directly, so no translation needed
         if (columns.contains(column)) {
@@ -896,7 +905,7 @@ public class PropertyDerivations
 
         // if the column is part of the equality conditions and its counterpart
         // is exposed, use that, instead
-        for (JoinNode.EquiJoinClause equality : equalities) {
+        for (EquiJoinClause equality : equalities) {
             if (equality.getLeft().equals(column) && columns.contains(equality.getRight())) {
                 return Optional.of(equality.getRight());
             }

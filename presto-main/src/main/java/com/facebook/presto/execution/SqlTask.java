@@ -21,6 +21,7 @@ import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.BufferResult;
 import com.facebook.presto.execution.buffer.LazyOutputBuffer;
 import com.facebook.presto.execution.buffer.OutputBuffer;
+import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.buffer.SpoolingOutputBufferFactory;
@@ -492,6 +493,11 @@ public class SqlTask
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
         return outputBuffer.get(bufferId, startingSequenceId, maxSize);
+    }
+
+    public OutputBufferInfo getOutputBufferInfo()
+    {
+        return outputBuffer.getInfo();
     }
 
     public void acknowledgeTaskResults(OutputBufferId bufferId, long sequenceId)

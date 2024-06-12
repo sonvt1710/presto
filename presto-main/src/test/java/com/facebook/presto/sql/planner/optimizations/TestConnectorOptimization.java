@@ -285,7 +285,7 @@ public class TestConnectorOptimization
     private static PlanNode optimize(PlanNode plan, Map<ConnectorId, Set<ConnectorPlanOptimizer>> optimizers)
     {
         ApplyConnectorOptimization optimizer = new ApplyConnectorOptimization(() -> optimizers);
-        return optimizer.optimize(plan, TEST_SESSION, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP);
+        return optimizer.optimize(plan, TEST_SESSION, TypeProvider.empty(), new VariableAllocator(), new PlanNodeIdAllocator(), WarningCollector.NOOP).getPlanNode();
     }
 
     private static ConnectorPlanOptimizer filterPushdown()
@@ -351,11 +351,6 @@ public class TestConnectorOptimization
             TestConnectorTableLayoutHandle(RowExpression predicate)
             {
                 this.predicate = predicate;
-            }
-
-            public RowExpression getPredicate()
-            {
-                return predicate;
             }
 
             @Override

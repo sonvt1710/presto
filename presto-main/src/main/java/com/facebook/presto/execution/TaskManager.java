@@ -16,6 +16,7 @@ package com.facebook.presto.execution;
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.BufferResult;
+import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.execution.buffer.OutputBuffers;
 import com.facebook.presto.execution.buffer.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.scheduler.TableWriteInfo;
@@ -109,10 +110,18 @@ public interface TaskManager
      * task or buffer has not been created yet, an uninitialized task is
      * created and a future is returned.
      * <p>
+     * Returns empty results if the Task is destroyed, e.g. because it fails
+     * or is aborted, or another request is made for the same data.
+     * <p>
      * NOTE: this design assumes that only tasks and buffers that will
      * eventually exist are queried.
      */
     ListenableFuture<BufferResult> getTaskResults(TaskId taskId, OutputBufferId bufferId, long startingSequenceId, DataSize maxSize);
+
+    /**
+     * Gets the {@link OutputBufferInfo} associated with the specified task.
+     */
+    OutputBufferInfo getOutputBufferInfo(TaskId taskId);
 
     /**
      * Acknowledges previously received results.

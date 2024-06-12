@@ -184,7 +184,7 @@ abstract class AbstractOrcRecordReader<T extends StreamReader>
         ImmutableSet.Builder<Integer> presentColumns = ImmutableSet.builder();
         OrcType root = types.get(0);
         for (int column : includedColumns.keySet()) {
-            // an old file can have less columns since columns can be added
+            // an old file can have fewer columns since columns can be added
             // after the file was written
             if (column >= 0 && column < root.getFieldCount()) {
                 presentColumns.add(column);
@@ -334,6 +334,9 @@ abstract class AbstractOrcRecordReader<T extends StreamReader>
         Map<String, List<Subfield>> fields = new HashMap<>();
         for (Subfield subfield : requiredSubfields) {
             List<Subfield.PathElement> path = subfield.getPath();
+            if (path.size() == 1 && path.get(0) instanceof Subfield.NoSubfield) {
+                continue;
+            }
             String name = ((Subfield.NestedField) path.get(0)).getName().toLowerCase(Locale.ENGLISH);
             fields.computeIfAbsent(name, k -> new ArrayList<>());
             if (path.size() > 1) {

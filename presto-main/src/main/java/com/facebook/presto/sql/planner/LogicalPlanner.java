@@ -53,11 +53,13 @@ import com.facebook.presto.sql.planner.plan.StatisticsWriterNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode.DeleteHandle;
+import com.facebook.presto.sql.planner.plan.UpdateNode;
 import com.facebook.presto.sql.tree.Analyze;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CreateTableAsSelect;
 import com.facebook.presto.sql.tree.Delete;
 import com.facebook.presto.sql.tree.Explain;
+import com.facebook.presto.sql.tree.ExplainFormat;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.Insert;
@@ -68,6 +70,7 @@ import com.facebook.presto.sql.tree.Parameter;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.RefreshMaterializedView;
 import com.facebook.presto.sql.tree.Statement;
+import com.facebook.presto.sql.tree.Update;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -96,8 +99,10 @@ import static com.facebook.presto.sql.planner.TranslateExpressionsUtil.toRowExpr
 import static com.facebook.presto.sql.planner.plan.TableWriterNode.CreateName;
 import static com.facebook.presto.sql.planner.plan.TableWriterNode.InsertReference;
 import static com.facebook.presto.sql.planner.plan.TableWriterNode.RefreshMaterializedViewReference;
+import static com.facebook.presto.sql.planner.plan.TableWriterNode.UpdateTarget;
 import static com.facebook.presto.sql.planner.plan.TableWriterNode.WriterTarget;
 import static com.facebook.presto.sql.relational.Expressions.constant;
+import static com.facebook.presto.sql.tree.ExplainFormat.Type.TEXT;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
@@ -169,6 +174,9 @@ public class LogicalPlanner
         else if (statement instanceof Delete) {
             return createDeletePlan(analysis, (Delete) statement);
         }
+        if (statement instanceof Update) {
+            return createUpdatePlan(analysis, (Update) statement);
+        }
         else if (statement instanceof Query) {
             return createRelationPlan(analysis, (Query) statement, new SqlPlannerContext(0));
         }
@@ -190,7 +198,12 @@ public class LogicalPlanner
         PlanNode root = underlyingPlan.getRoot();
         Scope scope = analysis.getScope(statement);
         VariableReferenceExpression outputVariable = newVariable(variableAllocator, scope.getRelationType().getFieldByIndex(0));
-        root = new ExplainAnalyzeNode(getSourceLocation(statement), idAllocator.getNextId(), root, outputVariable, statement.isVerbose());
+        ExplainFormat.Type type = statement.getOptions()
+                .stream().filter(option -> option instanceof ExplainFormat)
+                .findFirst().map(ExplainFormat.class::cast)
+                .map(ExplainFormat::getType)
+                .orElse(TEXT);
+        root = new ExplainAnalyzeNode(getSourceLocation(statement), idAllocator.getNextId(), root, outputVariable, statement.isVerbose(), type);
         return new RelationPlan(root, scope, ImmutableList.of(outputVariable));
     }
 
@@ -231,6 +244,7 @@ public class LogicalPlanner
                         singleGroupingSet(statisticAggregations.getGroupingVariables()),
                         ImmutableList.of(),
                         AggregationNode.Step.SINGLE,
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty()),
                 targetTable,
@@ -421,7 +435,9 @@ public class LogicalPlanner
                             preferredShufflePartitioningScheme,
                             // partial aggregation is run within the TableWriteOperator to calculate the statistics for
                             // the data consumed by the TableWriteOperator
-                            Optional.of(aggregations.getPartialAggregation())),
+                            Optional.of(aggregations.getPartialAggregation()),
+                            Optional.empty(),
+                            Optional.of(Boolean.FALSE)),
                     Optional.of(target),
                     variableAllocator.newVariable("rows", BIGINT),
                     // final aggregation is run within the TableFinishOperator to summarize collected statistics
@@ -448,7 +464,9 @@ public class LogicalPlanner
                         notNullColumnVariables,
                         tablePartitioningScheme,
                         preferredShufflePartitioningScheme,
-                        Optional.empty()),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(Boolean.FALSE)),
                 Optional.of(target),
                 variableAllocator.newVariable("rows", BIGINT),
                 Optional.empty(),
@@ -469,6 +487,47 @@ public class LogicalPlanner
                 idAllocator.getNextId(),
                 deleteNode,
                 Optional.of(deleteHandle),
+                variableAllocator.newVariable("rows", BIGINT),
+                Optional.empty(),
+                Optional.empty());
+
+        return new RelationPlan(commitNode, analysis.getScope(node), commitNode.getOutputVariables());
+    }
+
+    private RelationPlan createUpdatePlan(Analysis analysis, Update node)
+    {
+        SqlPlannerContext context = new SqlPlannerContext(0);
+        UpdateNode updateNode = new QueryPlanner(analysis, variableAllocator, idAllocator, buildLambdaDeclarationToVariableMap(analysis, variableAllocator), metadata, session, context, sqlParser)
+                .plan(node);
+
+        TableHandle handle = analysis.getTableHandle(node.getTable());
+        ImmutableList.Builder<String> updatedColumnNamesBuilder = ImmutableList.builder();
+        ImmutableList.Builder<ColumnHandle> updatedColumnHandlesBuilder = ImmutableList.builder();
+
+        TableMetadata tableMetadata = metadata.getTableMetadata(session, handle);
+        Map<String, ColumnHandle> columnMap = metadata.getColumnHandles(session, handle);
+        List<ColumnMetadata> dataColumns = tableMetadata.getMetadata().getColumns().stream()
+                .filter(column -> !column.isHidden())
+                .collect(toImmutableList());
+        List<String> targetColumnNames = node.getAssignments().stream()
+                .map(assignment -> assignment.getName().getValue())
+                .collect(toImmutableList());
+
+        for (ColumnMetadata columnMetadata : dataColumns) {
+            String name = columnMetadata.getName();
+            int index = targetColumnNames.indexOf(name);
+            if (index >= 0) {
+                updatedColumnNamesBuilder.add(name);
+                updatedColumnHandlesBuilder.add(requireNonNull(columnMap.get(name), "columnMap didn't contain name"));
+            }
+        }
+
+        UpdateTarget updateTarget = new UpdateTarget(handle, metadata.getTableMetadata(session, handle).getTable(), updatedColumnNamesBuilder.build(), updatedColumnHandlesBuilder.build());
+        TableFinishNode commitNode = new TableFinishNode(
+                updateNode.getSourceLocation(),
+                idAllocator.getNextId(),
+                updateNode,
+                Optional.of(updateTarget),
                 variableAllocator.newVariable("rows", BIGINT),
                 Optional.empty(),
                 Optional.empty());

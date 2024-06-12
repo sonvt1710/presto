@@ -95,8 +95,12 @@ public class OperatorStats
 
     private final RuntimeStats runtimeStats;
 
+    private final DynamicFilterStats dynamicFilterStats;
+
     private final long nullJoinBuildKeyCount;
     private final long joinBuildKeyCount;
+    private final long nullJoinProbeKeyCount;
+    private final long joinProbeKeyCount;
 
     @JsonCreator
     public OperatorStats(
@@ -150,8 +154,11 @@ public class OperatorStats
             @Nullable
             @JsonProperty("info") OperatorInfo info,
             @JsonProperty("runtimeStats") RuntimeStats runtimeStats,
+            @JsonProperty("dynamicFilterStats") DynamicFilterStats dynamicFilterStats,
             @JsonProperty("nullJoinBuildKeyCount") long nullJoinBuildKeyCount,
-            @JsonProperty("joinBuildKeyCount") long joinBuildKeyCount)
+            @JsonProperty("joinBuildKeyCount") long joinBuildKeyCount,
+            @JsonProperty("nullJoinProbeKeyCount") long nullJoinProbeKeyCount,
+            @JsonProperty("joinProbeKeyCount") long joinProbeKeyCount)
     {
         this.stageId = stageId;
         this.stageExecutionId = stageExecutionId;
@@ -205,12 +212,16 @@ public class OperatorStats
 
         this.runtimeStats = runtimeStats;
 
+        this.dynamicFilterStats = dynamicFilterStats;
+
         this.blockedReason = blockedReason;
 
         this.info = info;
         this.infoUnion = null;
         this.nullJoinBuildKeyCount = nullJoinBuildKeyCount;
         this.joinBuildKeyCount = joinBuildKeyCount;
+        this.nullJoinProbeKeyCount = nullJoinProbeKeyCount;
+        this.joinProbeKeyCount = joinProbeKeyCount;
     }
 
     @ThriftConstructor
@@ -263,10 +274,13 @@ public class OperatorStats
             Optional<BlockedReason> blockedReason,
 
             RuntimeStats runtimeStats,
+            DynamicFilterStats dynamicFilterStats,
             @Nullable
             OperatorInfoUnion infoUnion,
             long nullJoinBuildKeyCount,
-            long joinBuildKeyCount)
+            long joinBuildKeyCount,
+            long nullJoinProbeKeyCount,
+            long joinProbeKeyCount)
     {
         this.stageId = stageId;
         this.stageExecutionId = stageExecutionId;
@@ -320,12 +334,16 @@ public class OperatorStats
 
         this.runtimeStats = runtimeStats;
 
+        this.dynamicFilterStats = dynamicFilterStats;
+
         this.blockedReason = blockedReason;
 
         this.infoUnion = infoUnion;
         this.info = null;
         this.nullJoinBuildKeyCount = nullJoinBuildKeyCount;
         this.joinBuildKeyCount = joinBuildKeyCount;
+        this.nullJoinProbeKeyCount = nullJoinProbeKeyCount;
+        this.joinProbeKeyCount = joinProbeKeyCount;
     }
 
     @JsonProperty
@@ -623,6 +641,28 @@ public class OperatorStats
         return joinBuildKeyCount;
     }
 
+    @JsonProperty
+    @ThriftField(42)
+    public long getNullJoinProbeKeyCount()
+    {
+        return nullJoinProbeKeyCount;
+    }
+
+    @JsonProperty
+    @ThriftField(43)
+    public long getJoinProbeKeyCount()
+    {
+        return joinProbeKeyCount;
+    }
+
+    @Nullable
+    @JsonProperty
+    @ThriftField(44)
+    public DynamicFilterStats getDynamicFilterStats()
+    {
+        return dynamicFilterStats;
+    }
+
     public OperatorStats add(OperatorStats operatorStats)
     {
         return add(ImmutableList.of(operatorStats));
@@ -635,21 +675,21 @@ public class OperatorStats
         long addInputCalls = this.addInputCalls;
         long addInputWall = this.addInputWall.roundTo(NANOSECONDS);
         long addInputCpu = this.addInputCpu.roundTo(NANOSECONDS);
-        long addInputAllocation = this.addInputAllocation.toBytes();
-        long rawInputDataSize = this.rawInputDataSize.toBytes();
+        double addInputAllocation = this.addInputAllocation.toBytes();
+        double rawInputDataSize = this.rawInputDataSize.toBytes();
         long rawInputPositions = this.rawInputPositions;
-        long inputDataSize = this.inputDataSize.toBytes();
+        double inputDataSize = this.inputDataSize.toBytes();
         long inputPositions = this.inputPositions;
         double sumSquaredInputPositions = this.sumSquaredInputPositions;
 
         long getOutputCalls = this.getOutputCalls;
         long getOutputWall = this.getOutputWall.roundTo(NANOSECONDS);
         long getOutputCpu = this.getOutputCpu.roundTo(NANOSECONDS);
-        long getOutputAllocation = this.getOutputAllocation.toBytes();
-        long outputDataSize = this.outputDataSize.toBytes();
+        double getOutputAllocation = this.getOutputAllocation.toBytes();
+        double outputDataSize = this.outputDataSize.toBytes();
         long outputPositions = this.outputPositions;
 
-        long physicalWrittenDataSize = this.physicalWrittenDataSize.toBytes();
+        double physicalWrittenDataSize = this.physicalWrittenDataSize.toBytes();
 
         long additionalCpu = this.additionalCpu.roundTo(NANOSECONDS);
         long blockedWall = this.blockedWall.roundTo(NANOSECONDS);
@@ -659,21 +699,24 @@ public class OperatorStats
         long finishCpu = this.finishCpu.roundTo(NANOSECONDS);
         long finishAllocation = this.finishAllocation.toBytes();
 
-        long memoryReservation = this.userMemoryReservation.toBytes();
-        long revocableMemoryReservation = this.revocableMemoryReservation.toBytes();
-        long systemMemoryReservation = this.systemMemoryReservation.toBytes();
-        long peakUserMemory = this.peakUserMemoryReservation.toBytes();
-        long peakSystemMemory = this.peakSystemMemoryReservation.toBytes();
-        long peakTotalMemory = this.peakTotalMemoryReservation.toBytes();
+        double memoryReservation = this.userMemoryReservation.toBytes();
+        double revocableMemoryReservation = this.revocableMemoryReservation.toBytes();
+        double systemMemoryReservation = this.systemMemoryReservation.toBytes();
+        double peakUserMemory = this.peakUserMemoryReservation.toBytes();
+        double peakSystemMemory = this.peakSystemMemoryReservation.toBytes();
+        double peakTotalMemory = this.peakTotalMemoryReservation.toBytes();
 
-        long spilledDataSize = this.spilledDataSize.toBytes();
+        double spilledDataSize = this.spilledDataSize.toBytes();
 
         Optional<BlockedReason> blockedReason = this.blockedReason;
 
         RuntimeStats runtimeStats = RuntimeStats.copyOf(this.runtimeStats);
+        DynamicFilterStats dynamicFilterStats = DynamicFilterStats.copyOf(this.dynamicFilterStats);
 
         long nullJoinBuildKeyCount = this.nullJoinBuildKeyCount;
         long joinBuildKeyCount = this.joinBuildKeyCount;
+        long nullJoinProbeKeyCount = this.nullJoinProbeKeyCount;
+        long joinProbeKeyCount = this.joinProbeKeyCount;
 
         Mergeable<OperatorInfo> base = getMergeableInfoOrNull(info);
         for (OperatorStats operator : operators) {
@@ -728,9 +771,12 @@ public class OperatorStats
             }
 
             runtimeStats.mergeWith(operator.getRuntimeStats());
+            dynamicFilterStats.mergeWith(operator.getDynamicFilterStats());
 
             nullJoinBuildKeyCount += operator.getNullJoinBuildKeyCount();
             joinBuildKeyCount += operator.getJoinBuildKeyCount();
+            nullJoinProbeKeyCount += operator.getNullJoinProbeKeyCount();
+            joinProbeKeyCount += operator.getJoinProbeKeyCount();
         }
 
         return new OperatorStats(
@@ -746,21 +792,21 @@ public class OperatorStats
                 addInputCalls,
                 succinctNanos(addInputWall),
                 succinctNanos(addInputCpu),
-                succinctBytes(addInputAllocation),
-                succinctBytes(rawInputDataSize),
+                succinctBytes((long) addInputAllocation),
+                succinctBytes((long) rawInputDataSize),
                 rawInputPositions,
-                succinctBytes(inputDataSize),
+                succinctBytes((long) inputDataSize),
                 inputPositions,
                 sumSquaredInputPositions,
 
                 getOutputCalls,
                 succinctNanos(getOutputWall),
                 succinctNanos(getOutputCpu),
-                succinctBytes(getOutputAllocation),
-                succinctBytes(outputDataSize),
+                succinctBytes((long) getOutputAllocation),
+                succinctBytes((long) outputDataSize),
                 outputPositions,
 
-                succinctBytes(physicalWrittenDataSize),
+                succinctBytes((long) physicalWrittenDataSize),
 
                 succinctNanos(additionalCpu),
                 succinctNanos(blockedWall),
@@ -770,21 +816,24 @@ public class OperatorStats
                 succinctNanos(finishCpu),
                 succinctBytes(finishAllocation),
 
-                succinctBytes(memoryReservation),
-                succinctBytes(revocableMemoryReservation),
-                succinctBytes(systemMemoryReservation),
-                succinctBytes(peakUserMemory),
-                succinctBytes(peakSystemMemory),
-                succinctBytes(peakTotalMemory),
+                succinctBytes((long) memoryReservation),
+                succinctBytes((long) revocableMemoryReservation),
+                succinctBytes((long) systemMemoryReservation),
+                succinctBytes((long) peakUserMemory),
+                succinctBytes((long) peakSystemMemory),
+                succinctBytes((long) peakTotalMemory),
 
-                succinctBytes(spilledDataSize),
+                succinctBytes((long) spilledDataSize),
 
                 blockedReason,
 
                 (OperatorInfo) base,
                 runtimeStats,
+                dynamicFilterStats,
                 nullJoinBuildKeyCount,
-                joinBuildKeyCount);
+                joinBuildKeyCount,
+                nullJoinProbeKeyCount,
+                joinProbeKeyCount);
     }
 
     @SuppressWarnings("unchecked")
@@ -849,7 +898,10 @@ public class OperatorStats
                 blockedReason,
                 info,
                 runtimeStats,
+                dynamicFilterStats,
                 nullJoinBuildKeyCount,
-                joinBuildKeyCount);
+                joinBuildKeyCount,
+                nullJoinProbeKeyCount,
+                joinProbeKeyCount);
     }
 }
