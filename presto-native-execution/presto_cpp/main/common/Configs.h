@@ -222,6 +222,11 @@ class SystemConfig : public ConfigBase {
   static constexpr std::string_view kDriverNumCpuThreadsHwMultiplier{
       "driver.num-cpu-threads-hw-multiplier"};
 
+  /// Run driver threads with the SCHED_BATCH scheduling policy. Linux only.
+  /// https://man7.org/linux/man-pages/man7/sched.7.html
+  static constexpr std::string_view kDriverThreadsBatchSchedulingEnabled{
+      "driver.threads-batch-scheduling-enabled"};
+
   /// Time duration threshold used to detect if an operator call in driver is
   /// stuck or not.  If any of the driver thread is detected as stuck by this
   /// standard, we take the worker offline and further investigation on the
@@ -248,6 +253,8 @@ class SystemConfig : public ConfigBase {
   /// Memory allocation limit enforced via internal memory allocator.
   static constexpr std::string_view kSystemMemoryGb{"system-memory-gb"};
 
+  /// Indicates if the process is configured as a sidecar.
+  static constexpr std::string_view kNativeSidecar{"native-sidecar"};
   /// Specifies the total memory capacity that can be used by query execution in
   /// GB. The query memory capacity should be configured less than the system
   /// memory capacity ('system-memory-gb') to reserve memory for system usage
@@ -343,6 +350,12 @@ class SystemConfig : public ConfigBase {
       "cache.velox.ttl-check-interval"};
   static constexpr std::string_view kUseMmapAllocator{"use-mmap-allocator"};
 
+  /// Number of pages in largest size class in MallocAllocator. This is used to
+  /// optimize MmapAllocator performance for query workloads with large memory
+  /// allocation size.
+  static constexpr std::string_view kLargestSizeClassPages{
+      "largest-size-class-pages"};
+
   static constexpr std::string_view kEnableRuntimeMetricsCollection{
       "runtime-metrics-collection-enabled"};
 
@@ -350,6 +363,11 @@ class SystemConfig : public ConfigBase {
   /// memory arbitration.
   static constexpr std::string_view kMemoryArbitratorKind{
       "memory-arbitrator-kind"};
+
+  /// If true, it allows memory arbitrator to reclaim used memory cross query
+  /// memory pools.
+  static constexpr std::string_view kMemoryArbitratorGlobalArbitrationEnabled{
+      "memory-arbitrator-global-arbitration-enabled"};
 
   /// The initial memory pool capacity in bytes allocated on creation.
   ///
@@ -441,9 +459,17 @@ class SystemConfig : public ConfigBase {
   static constexpr std::string_view kExchangeMaxErrorDuration{
       "exchange.max-error-duration"};
 
+  /// If true, copy proxygen iobufs to velox memory pool, otherwise not. The
+  /// presto exchange source builds the serialized presto page from proxygen
+  /// iobufs directly.
+  static constexpr std::string_view kExchangeEnableBufferCopy{
+      "exchange.enable-buffer-copy"};
+
   /// Enable to make immediate buffer memory transfer in the handling IO threads
   /// as soon as exchange gets its response back. Otherwise the memory transfer
   /// will happen later in driver thread pool.
+  ///
+  /// NOTE: this only applies if 'exchange.no-buffer-copy' is false.
   static constexpr std::string_view kExchangeImmediateBufferTransfer{
       "exchange.immediate-buffer-transfer"};
 
@@ -466,6 +492,13 @@ class SystemConfig : public ConfigBase {
   /// 1.0 is default.
   static constexpr std::string_view kExchangeHttpClientNumIoThreadsHwMultiplier{
       "exchange.http-client.num-io-threads-hw-multiplier"};
+
+  /// Floating point number used in calculating how many threads we would use
+  /// for Exchange HTTP client CPU executor: hw_concurrency x multiplier.
+  /// 1.0 is default.
+  static constexpr std::string_view
+      kExchangeHttpClientNumCpuThreadsHwMultiplier{
+          "exchange.http-client.num-cpu-threads-hw-multiplier"};
 
   /// The maximum timeslice for a task on thread if there are threads queued.
   static constexpr std::string_view kTaskRunTimeSliceMicros{
@@ -589,9 +622,13 @@ class SystemConfig : public ConfigBase {
 
   double exchangeHttpClientNumIoThreadsHwMultiplier() const;
 
+  double exchangeHttpClientNumCpuThreadsHwMultiplier() const;
+
   double connectorNumIoThreadsHwMultiplier() const;
 
   double driverNumCpuThreadsHwMultiplier() const;
+
+  bool driverThreadsBatchSchedulingEnabled() const;
 
   size_t driverStuckOperatorThresholdMs() const;
 
@@ -649,6 +686,8 @@ class SystemConfig : public ConfigBase {
 
   std::string memoryArbitratorKind() const;
 
+  bool memoryArbitratorGlobalArbitrationEnabled() const;
+
   int32_t queryMemoryGb() const;
 
   int32_t queryReservedMemoryGb() const;
@@ -697,6 +736,8 @@ class SystemConfig : public ConfigBase {
 
   bool exchangeEnableConnectionPool() const;
 
+  bool exchangeEnableBufferCopy() const;
+
   bool exchangeImmediateBufferTransfer() const;
 
   int32_t taskRunTimeSliceMicros() const;
@@ -721,7 +762,11 @@ class SystemConfig : public ConfigBase {
 
   std::chrono::duration<double> cacheVeloxTtlCheckInterval() const;
 
+  int32_t largestSizeClassPages() const;
+
   bool enableRuntimeMetricsCollection() const;
+
+  bool prestoNativeSidecar() const;
 };
 
 /// Provides access to node properties defined in node.properties file.

@@ -181,7 +181,7 @@ queries.
        * Array checksum of the value set
 * **Row Columns**
     * Checksums row fields recursively according to the type of the fields.
-* For all other column types, generates a simple checksum using the :func:`checksum` function.
+* For all other column types, generates a simple checksum using the :func:`!checksum` function.
 
 Determinism
 -----------
@@ -276,6 +276,10 @@ Name                                        Description
                                             are emitted to ``stdout``.
 ``control.table-prefix``                    The table prefix to be appended to the control target table.
 ``test.table-prefix``                       The table prefix to be appended to the test target table.
+``control.reuse-table``                     If ``true``, reuse the output table of the control source Insert and CreateTableAsSelect
+                                            query. Otherwise, run the control source query and write to a temporary table.
+``test.reuse-table``                        If ``true``, reuse the output table of the test source Insert and CreateTableAsSelect
+                                            query. Otherwise, run the test source query and write to a temporary table.
 ``test-id``                                 A string to be attached to output events.
 ``max-concurrency``                         Maximum number of concurrent verifications.
 ``suite-repetition``                        How many times a suite is verified.

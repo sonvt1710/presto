@@ -1,3 +1,4 @@
+#!/bin/sh
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -10,17 +11,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM quay.io/centos/centos:stream8
-
-ENV PROMPT_ALWAYS_RESPOND=n
-ENV CC=/opt/rh/gcc-toolset-9/root/bin/gcc
-ENV CXX=/opt/rh/gcc-toolset-9/root/bin/g++
-
-RUN mkdir -p /scripts /velox/scripts
-COPY scripts /scripts
-COPY velox/scripts /velox/scripts
-RUN mkdir build && \
-    (cd build && ../scripts/setup-centos.sh && \
-                 ../velox/scripts/setup-adapters.sh aws && \
-                 ../scripts/setup-adapters.sh ) && \
-    rm -rf build
+GLOG_logtostderr=1 presto_server --etc-dir=/opt/presto-server/etc
